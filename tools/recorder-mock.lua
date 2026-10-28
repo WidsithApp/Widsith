@@ -140,7 +140,7 @@ function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 local profileMs = 0
 function debugprofilestop() return profileMs end
 function GetServerTime() return 1790766000 + math.floor(clock) end
-function GetBuildInfo() return "1.60.1", "70124", "Sep 29 2026", 16001 end
+function GetBuildInfo() return "1.60.1", "70658", "Oct 27 2026", 16001 end
 function GetLocale() return "enUS" end
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
 C_AddOns = { GetAddOnMetadata = function() return "0.2.23" end }
@@ -157,8 +157,8 @@ C_ChatInfo = { PerformEmote = function() end }
 function InCombatLockdown() return inCombat end
 function UnitGUID(unit) if unit == "player" then return "Player-4747-0ABC1234" end end
 function UnitName() return "Aldwin", "Thornby" end
-function GetRealmName() return "Classic Beta PvE" end
-function GetNormalizedRealmName() return "ClassicBetaPvE" end
+function GetRealmName() return "Whitemane" end
+function GetNormalizedRealmName() return "Whitemane" end
 function UnitClass() return "Warrior", "WARRIOR", 1 end
 function UnitRace() return "Human", "Human", 1 end
 function UnitLevel() return 5 end
