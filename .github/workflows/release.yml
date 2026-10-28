@@ -1,0 +1,47 @@
+# A tag v<version> pushed to this repository becomes a release: the check runs, the addon is
+# zipped as the game wants it (the Widsith folder alone, without this repository's own files),
+# and the zip is attached to a GitHub release for that tag. The version in the tag must be the
+# one in Widsith.toc.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/check.mjs
+      - name: Check the tag against the TOC
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          toc="$(sed -n 's/^## Version: *//p' Widsith.toc | tr -d '\r')"
+          if [ "$tag" != "$toc" ]; then
+            echo "The tag says $tag but Widsith.toc says $toc."
+            exit 1
+          fi
+          echo "VERSION=$tag" >> "$GITHUB_ENV"
+      - name: Zip the addon
+        run: |
+          mkdir -p out/Widsith
+          rsync -a --exclude=.git --exclude=.github --exclude=.gitignore --exclude=README.md --exclude=tools --exclude=out ./ out/Widsith/
+          cd out
+          zip -r -X "Widsith-addon-$VERSION.zip" Widsith
+          unzip -l "Widsith-addon-$VERSION.zip"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "out/Widsith-addon-$VERSION.zip" \
+            --title "Widsith $VERSION" \
+            --notes "The addon as a zip: unzip it into the game's Interface/AddOns folder. The same file is offered at https://widsith.app and on the addon sites."
