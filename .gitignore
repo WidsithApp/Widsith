@@ -1,0 +1,5 @@
+# sharp, for the image scripts (npm install in tools/)
+tools/node_modules/
+
+# Previews the image scripts write when given a folder or file in tools/previews
+tools/previews/

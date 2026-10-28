@@ -1,0 +1,8 @@
+{
+	"name": "widsith-addon-tools",
+	"private": true,
+	"description": "Draws the images in media/ (build-flame.mjs, build-glow.mjs). The check needs nothing installed.",
+	"devDependencies": {
+		"sharp": "^0.35.5"
+	}
+}

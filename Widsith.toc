@@ -1,0 +1,21 @@
+## Interface: 120105, 16001
+## Title: Widsith
+## Notes: Keeps a record of your character's journey as you play: where you went, what you did and when. Open the saved file at widsith.app to replay it.
+## Author: Widsith
+## Version: 0.4.6
+## SavedVariablesPerCharacter: WidsithDB, WidsithUI
+## AddonCompartmentFunc: Widsith_OnAddonCompartmentClick
+## IconTexture: Interface\AddOns\Widsith\media\emblem
+## X-Website: https://widsith.app
+## X-License: All Rights Reserved (Reflective Grove LLC)
+## X-Format: 1
+
+# X-Format is the version of the recording's line format.
+
+Core.lua
+Position.lua
+Events.lua
+Extras.lua
+Moments.lua
+Save.lua
+Options.lua
