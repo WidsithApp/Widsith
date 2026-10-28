@@ -20,8 +20,8 @@ WJ.CHUNK_LINES   = 256
 WJ.TIMER_PERIOD  = 300   -- seconds between TIME / SNAP / COUNT lines
 
 -- Which client this is. WoW Forever runs the Mainline client and API with a
--- Classic-range interface number (16001 on the 1.60.1 beta). Its WOW_PROJECT_ID
--- was Mainline's (1) on build 70124 and is 18 from build 70205; the Classic
+-- Classic-range interface number (16001 on 1.60.1). Its WOW_PROJECT_ID was
+-- Mainline's (1) on its early builds and is 18 from build 70205 on; the Classic
 -- flavours, whose interface numbers are in the same range, have IDs of their own.
 local FOREVER_PROJECTS = { [WOW_PROJECT_MAINLINE or 1] = true, [18] = true }
 WJ.INTERFACE = select(4, GetBuildInfo()) or 0
@@ -423,8 +423,8 @@ end
 
 -- The game started this load without the recording file (see the boot below).
 -- Written into the recording, said once in chat, and the save reminder stops:
--- while the client can't read the file back, every reload replaces it. (An early
--- WoW Forever beta build wrote saved variables but never read them back.)
+-- while the client can't read the file back, every reload replaces it. (Early
+-- WoW Forever builds wrote saved variables but never read them back.)
 function WJ.noteSavesNotLoaded()
   WJ.savesNotLoaded = true
   WJ.write("ERR", "savedvariables", "empty at reload: the game did not load the recording file")
