@@ -150,6 +150,21 @@ function UnitStat(_, i) if inCombat then return SECRET, SECRET, SECRET, SECRET e
 function UnitArmor() if inCombat then return SECRET, SECRET end return 50, 55 end
 function UnitHealthMax() if inCombat then return SECRET end return 136 end
 function GetAverageItemLevel() return 20, 18.5 end
+-- The loot messages, worded as the English client words them, and a loot window of one slot.
+LOOT_ITEM_SELF = "You receive loot: %s."
+LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d."
+LOOT_ITEM_PUSHED_SELF = "You receive item: %s."
+LOOT_ITEM_PUSHED_SELF_MULTIPLE = "You receive item: %sx%d."
+LOOT_ITEM_CREATED_SELF = "You create: %s."
+LOOT_ITEM_CREATED_SELF_MULTIPLE = "You create: %sx%d."
+LOOT_ITEM_BONUS_ROLL_SELF = "You receive bonus loot: %s."
+LOOT_ITEM_BONUS_ROLL_SELF_MULTIPLE = "You receive bonus loot: %sx%d."
+LOOT_ITEM_REFUND = "You are refunded: %s."
+LOOT_ITEM_REFUND_MULTIPLE = "You are refunded: %sx%d."
+local lootSlots = {}
+function GetNumLootItems() return #lootSlots end
+function GetLootSlotLink(slot) return lootSlots[slot] and lootSlots[slot].link end
+function GetLootSourceInfo(slot) return lootSlots[slot] and lootSlots[slot].guid end
 function GetBuildInfo() return "1.60.1", "70658", "Oct 27 2026", 16001 end
 function GetLocale() return "enUS" end
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
@@ -548,6 +563,19 @@ fire("PLAYER_REGEN_ENABLED")
 stat[107] = "86"
 stat[1336] = "50 (Humanoid)"
 advance(3)
+-- the kobold's corpse looted (three cloth, through the loot window), then items the game pushed
+-- without one, a craft, a refund, a wording no format explains, another player's loot, and an
+-- upgraded item whose link carries bonus IDs
+lootSlots = { { link = "|cff9d9d9d|Hitem:2589::::::::1:::::::|h[Linen Cloth]|h|r", guid = "Creature-0-4621-0-46196-476-0000BCECFD" } }
+fire("LOOT_OPENED")
+fire("CHAT_MSG_LOOT", "You receive loot: |cff9d9d9d|Hitem:2589::::::::1:::::::|h[Linen Cloth]|h|rx3.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+fire("CHAT_MSG_LOOT", "You receive item: |cffffffff|Hitem:6948::::::::1:::::::|h[Hearthstone]|h|r.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+fire("CHAT_MSG_LOOT", "You create: |cffffffff|Hitem:2581::::::::1:::::::|h[Heavy Linen Bandage]|h|rx2.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+fire("CHAT_MSG_LOOT", "You are refunded: |cffffffff|Hitem:1234::::::::1:::::::|h[Returned Thing]|h|r.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+fire("CHAT_MSG_LOOT", "You find: |cffffffff|Hitem:999::::::::1:::::::|h[Odd Thing]|h|r.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+fire("CHAT_MSG_LOOT", "Someone receives loot: |cffffffff|Hitem:4321::::::::1:::::::|h[Their Thing]|h|r.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0BBBBBBB")
+fire("CHAT_MSG_LOOT", "You receive item: |cffa335ee|Hitem:268213::::::::80:577::6:5:6652:10353:10254:1527:10255::::::|h[Upgraded Blade]|h|r.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+advance(1)
 -- the poison runs out; then the game resends the whole set with new instance numbers
 present.HARMFUL[1] = nil
 fire("UNIT_AURA", "player", { removedAuraInstanceIDs = { 140 } })
@@ -865,6 +893,30 @@ for i, session in ipairs(WidsithDB.sessions) do
   end
 end
 expect(sizeFields == #WidsithDB.sessions and sizesInOrder, "a SESSION line doesn't say what the file held before it, or the sizes don't grow")
+-- Loot lines say which message they came from, by the client's own formats, with the count and
+-- the item as linked; a wording no format explains keeps the kind empty; another player's loot
+-- is never written.
+local lootByItem = {}
+for _, session in ipairs(WidsithDB.sessions) do
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local f = {}
+    for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+    if f[2] == "LOOT" then lootByItem[f[3]] = f end
+  end
+end
+local function lootIs(item, qty, source, kind, itemString)
+  local f = lootByItem[item]
+  return f ~= nil and f[4] == qty and (f[5] or "") == source and (f[7] or "") == kind and (f[8] or "") == itemString
+end
+expect(lootIs("2589", "3", "Creature-0-4621-0-46196-476-0000BCECFD", "loot", "item:2589::::::::1:::::::"),
+  "corpse loot wasn't written as kind loot with its count, source and item string")
+expect(lootIs("6948", "1", "", "item", "item:6948::::::::1:::::::"), "a pushed item wasn't written as kind item")
+expect(lootIs("2581", "2", "", "create", "item:2581::::::::1:::::::"), "a craft wasn't written as kind create with its count")
+expect(lootIs("1234", "1", "", "refund", "item:1234::::::::1:::::::"), "a refund wasn't written as kind refund")
+expect(lootIs("999", "1", "", "", "item:999::::::::1:::::::"), "a wording no format explains wasn't written with its kind empty")
+expect(lootByItem["4321"] == nil, "another player's loot was written")
+expect(lootIs("268213", "1", "", "item", "item:268213::::::::80:577::6:5:6652:10353:10254:1527:10255::::::"),
+  "an upgraded item's link wasn't kept whole")
 expect(recapNamed, "a recap's hit from a player wasn't written with their GUID and the recap's name")
 expect(blessingNamed, "an aura cast by a player wasn't written with their GUID and name")
 expect(intellectUnnamed, "an aura whose caster the game can't name wasn't written with the GUID alone")

@@ -7,6 +7,7 @@ Each version of Widsith, newest first, with the date it was handed out. The addo
 - Other players are named. A buff another player casts on you records who cast it, and a death at another player's hands records who dealt each hit, as the game names them. Group members and trade partners were already named; this makes the recording consistent.
 - The character sheet is never recorded while a fight hides part of it. The line waits for the fight to end, instead of being written with its attributes empty.
 - `/widsith size` says how big the recording is and which sessions are the largest, and each session's opening line records the file's size before it.
+- Each loot line says which message it came from: loot from a corpse or container, an item the game put in your bags, something you crafted, a bonus roll or a refund. It also keeps the item exactly as the game linked it, so an upgrade step no longer looks like the item dropping again.
 
 ## 0.4.7 · 2026-10-29
 

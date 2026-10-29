@@ -545,6 +545,8 @@ function WJ.printClientCheck()
     if type(lookup(path)) ~= "function" then missing[#missing + 1] = path end
   end
   print(PREFIX .. "missing functions: " .. (#missing > 0 and table.concat(missing, ", ") or "none"))
+  local formats = WJ.missingLootFormatNames and WJ.missingLootFormatNames() or {}
+  print(PREFIX .. "missing loot messages: " .. (#formats > 0 and table.concat(formats, ", ") or "none"))
   local events = WJ.unregisteredEvents or {}
   print(PREFIX .. "missing events: " .. (#events > 0 and table.concat(events, ", ") or "none"))
   if WJ.savesNotLoaded then print(PREFIX .. "the game didn't load the recording file at the last reload.") end

@@ -448,6 +448,74 @@ end
 -- Loot
 ---------------------------------------------------------------------------
 
+-- Which message a loot line came from, told by the game's own wording in the
+-- player's language: the format strings the client prints a player's own loot
+-- with ("You receive loot: %s.", "You receive item: %sx%d.", and so on),
+-- turned into patterns once, on first use. Each kind has a form with a count
+-- and one without; the counted forms are tried first, since the plain form's
+-- "%s" would swallow a trailing "x3". A message that matches none keeps its
+-- kind empty, never guessed: a wrong kind would show loot dropping from
+-- nowhere. "item" is what the game pushes into the bags without a loot
+-- window: quest rewards, mail, and on Retail every step of an item upgrade,
+-- which prints the same item again each time.
+local LOOT_FORMATS = {
+  { "LOOT_ITEM_SELF_MULTIPLE", "loot" },             { "LOOT_ITEM_SELF", "loot" },
+  { "LOOT_ITEM_PUSHED_SELF_MULTIPLE", "item" },      { "LOOT_ITEM_PUSHED_SELF", "item" },
+  { "LOOT_ITEM_CREATED_SELF_MULTIPLE", "create" },   { "LOOT_ITEM_CREATED_SELF", "create" },
+  { "LOOT_ITEM_BONUS_ROLL_SELF_MULTIPLE", "bonus" }, { "LOOT_ITEM_BONUS_ROLL_SELF", "bonus" },
+  { "LOOT_ITEM_REFUND_MULTIPLE", "refund" },         { "LOOT_ITEM_REFUND", "refund" },
+}
+local lootPatterns          -- { pattern, kind, slots }: slots[n] is "s" (the link) or "d" (the count)
+local missingLootFormats = {}
+
+-- A format string as a Lua pattern anchored at both ends: "%s" and "%d" (and
+-- their positional forms, "%1$s") become captures; the rest matches literally.
+local function lootPattern(fmt)
+  local slots = {}
+  local body = fmt:gsub("%%%d*%$?([sd])", function(kind)
+    slots[#slots + 1] = kind
+    return kind == "s" and "\1" or "\2"
+  end)
+  body = body:gsub("[%%%(%)%.%+%-%*%?%[%]%^%$]", "%%%0")
+  body = body:gsub("\1", "(.-)"):gsub("\2", "(%%d+)")
+  return "^" .. body .. "$", slots
+end
+
+local function buildLootPatterns()
+  lootPatterns = {}
+  for _, entry in ipairs(LOOT_FORMATS) do
+    local fmt = _G[entry[1]]
+    if type(fmt) == "string" and fmt ~= "" then
+      local pattern, slots = lootPattern(fmt)
+      lootPatterns[#lootPatterns + 1] = { pattern = pattern, kind = entry[2], slots = slots }
+    else
+      missingLootFormats[#missingLootFormats + 1] = entry[1]
+    end
+  end
+end
+
+-- The format strings this client lacks, for /widsith check.
+function WJ.missingLootFormatNames()
+  if not lootPatterns then buildLootPatterns() end
+  return missingLootFormats
+end
+
+-- The kind of a loot message and the count it names, or nothing for a
+-- wording the client's own formats don't explain.
+local function lootKind(msg)
+  if not lootPatterns then buildLootPatterns() end
+  for _, p in ipairs(lootPatterns) do
+    local first, second = msg:match(p.pattern)
+    if first then
+      local count
+      for i, slot in ipairs(p.slots) do
+        if slot == "d" then count = tonumber(i == 1 and first or second) end
+      end
+      return p.kind, count
+    end
+  end
+end
+
 -- Snapshot of the last loot window: itemID -> source GUID, plus when it opened.
 local lootWindow = { time = 0, items = {} }
 local LOOT_WINDOW = 5
@@ -475,7 +543,12 @@ handlers.CHAT_MSG_LOOT = function(msg, _, _, _, _, _, _, _, _, _, _, guid)
   local itemID = msg:match("item:(%d+)")
   if not itemID then return end
   itemID = tonumber(itemID)
-  local qty = tonumber(msg:match("|h|rx(%d+)")) or 1
+  local kind, count = lootKind(msg)
+  local qty = count or tonumber(msg:match("|h|rx(%d+)")) or 1
+  -- The item as the game linked it: the ID with the bonus IDs, enchant, gems
+  -- and context that make this copy the item it is (an upgrade step changes
+  -- them, a drop doesn't). The plain ID stays the field a reader counts by.
+  local itemString = msg:match("|H(item:[^|]+)|h")
   local source
   if GetTime() - lootWindow.time <= LOOT_WINDOW then
     source = lootWindow.items[itemID]
@@ -489,7 +562,7 @@ handlers.CHAT_MSG_LOOT = function(msg, _, _, _, _, _, _, _, _, _, _, guid)
     if ok then quality = q end
   end
   if quality == nil then quality = tonumber(msg:match("|cnIQ(%d)")) end
-  write("LOOT", itemID, qty, source, quality)
+  write("LOOT", itemID, qty, source, quality, kind, itemString)
   counts.loot = counts.loot + 1
 end
 
