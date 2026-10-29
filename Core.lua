@@ -76,6 +76,7 @@ end
 local db                 -- WidsithDB
 local session            -- current session table inside db.sessions
 local buffer = {}        -- lines not yet packed into a chunk
+local lastEquipStrings   -- the worn items' strings as last written with a SNAP this session
 local startClock         -- GetTime() at session start
 local paused = false     -- see WJ.pause(); declared here so WJ.health() sees it
 local previousOnFile     -- what the file held of the session before this load's first, for debug mode
@@ -263,6 +264,7 @@ function WJ.startSession(isLogin, isReload, isResume)
   db.sessions[#db.sessions + 1] = session
   db.character = describeCharacter()
   for k in pairs(counts) do counts[k] = 0 end
+  lastEquipStrings = nil
 
   local version, build, _, interface = GetBuildInfo()
   WJ.write("SESSION", serverTime, WJ.VERSION, WJ.FORMAT, version, build,
@@ -386,10 +388,32 @@ local function equipIDs()
   return ids
 end
 
+-- A worn item as the game links it: the item string, with the enchant, gems,
+-- suffix, bonus IDs and upgrade context that make the worn copy the item it
+-- is. Empty for an empty slot, or one the game hides.
+function WJ.equipString(slot)
+  if type(GetInventoryItemLink) ~= "function" then return "" end
+  local link = GetInventoryItemLink("player", slot)
+  if issecretvalue and issecretvalue(link) then return "" end
+  if type(link) ~= "string" then return "" end
+  return link:match("|H(item:[^|]+)|h") or ""
+end
+
+local function equipStrings()
+  local strings = {}
+  for slot = 1, EQUIP_SLOTS do strings[slot] = WJ.equipString(slot) end
+  return strings
+end
+
 function WJ.snapshot()
   local mapID, x, y = WJ.currentPosition()
+  -- The worn items' strings go with the first snapshot of a session and then
+  -- only when they differ from the last written: a quiet session costs nothing.
+  local strings = WJ.list(equipStrings())
+  local changed = strings ~= lastEquipStrings
+  lastEquipStrings = strings
   WJ.write("SNAP", UnitLevel("player"), UnitXP("player"), UnitXPMax("player"), GetMoney(),
-    mapID, WJ.coord(x), WJ.coord(y), WJ.list(questIDs()), WJ.list(equipIDs()))
+    mapID, WJ.coord(x), WJ.coord(y), WJ.list(questIDs()), WJ.list(equipIDs()), changed and strings or nil)
   WJ.write("COUNT", counts.pos, counts.kills, counts.loot, counts.xp, counts.quests, counts.deaths,
     counts.jumps, counts.shots, counts.emotes)
   -- The character sheet's numbers, when they changed (Extras.lua).
@@ -507,7 +531,7 @@ local USED_APIS = {
   "C_Map.GetBestMapForUnit", "C_Map.GetPlayerMapPosition", "C_Map.GetMapInfo", "C_Map.GetWorldPosFromMapPos",
   "UnitPosition", "C_QuestLog.GetNumQuestLogEntries", "C_QuestLog.GetInfo", "C_QuestLog.GetQuestObjectives",
   "C_QuestLog.GetTitleForQuestID", "C_QuestLog.ReadyForTurnIn", "C_QuestLog.IsComplete", "RequestTimePlayed", "ChatFrame_DisplayTimePlayed", "GetLootSourceInfo",
-  "C_Item.GetItemQualityByID", "C_Item.GetItemInfo", "C_MountJournal.GetMountFromSpell",
+  "C_Item.GetItemQualityByID", "C_Item.GetItemInfo", "GetInventoryItemLink", "C_MountJournal.GetMountFromSpell",
   "C_Reputation.GetFactionDataByID", "C_Reputation.GetNumFactions", "C_Reputation.GetFactionDataByIndex", "GetProfessions", "GetProfessionInfo", "GetAchievementInfo",
   "GetAverageItemLevel", "GetCritChance", "GetHaste", "GetMasteryEffect", "GetCombatRatingBonus",
   "GetVersatilityBonus", "C_SpecializationInfo.GetSpecialization", "C_SpecializationInfo.GetSpecializationInfo",

@@ -230,6 +230,11 @@ function UnitIsAFK() if afkHidden then return SECRET end return false end
 -- The character's gear by slot; an empty slot answers nil.
 local inventory = {}
 function GetInventoryItemID(_, slot) return inventory[slot] end
+-- The worn item's link, as the game gives it, with an item string of its own.
+function GetInventoryItemLink(_, slot)
+  local id = inventory[slot]
+  if id then return "|cffffffff|Hitem:" .. id .. "::::::::1:::::::|h[Worn Thing]|h|r" end
+end
 -- The quest log: entries with objectives, and whether each is ready to turn in. Quest 200 is in
 -- the log from the first session, already finished; quest 100 is accepted and played in a scene.
 local questLog = { { questID = 200, title = "An Old Errand", ready = true, level = 2,
@@ -1016,7 +1021,7 @@ for _, l in ipairs(first) do
     if f[7] == "" then afkHiddenSeen = true elseif afkHiddenSeen and f[7] == "0" then afkBack = true end
   end
   if l.kind == "EQUIP" then
-    local slot, item = l.fields:match("^(%d+)\t?(.*)$")
+    local slot, item = l.fields:match("^(%d+)\t?([^\t]*)")
     equipLines[slot] = equipLines[slot] or {}
     table.insert(equipLines[slot], { t = l.t, item = item })
   end
@@ -1137,6 +1142,35 @@ end
 expect(table.concat(questLines, " ") == "P1:0/8 P2:0/1 P1:3/8 P1:8/8 P2:1/1 D",
   "the quest's lines aren't the list at accept, the progress, then one QDONE: " .. table.concat(questLines, " "))
 expect(doneOpening == #WidsithDB.sessions, "a quest already ready wasn't written as the opening state of every session (" .. doneOpening .. " of " .. #WidsithDB.sessions .. ")")
+-- Gear as linked: every EQUIP with an item carries its item string, an emptied slot none; a
+-- session's first SNAP lists the worn items' strings, later ones only when they changed.
+local equipStringsRight, snapFirstHas, snapLaterEmpty, snapRepeats = true, true, false, false
+for _, session in ipairs(WidsithDB.sessions) do
+  local firstSnap, lastStrings = true, nil
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local f = {}
+    for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+    if f[2] == "EQUIP" then
+      local want = f[4] ~= "" and ("item:" .. f[4] .. "::::::::1:::::::") or ""
+      if (f[5] or "") ~= want then equipStringsRight = false end
+    elseif f[2] == "SNAP" then
+      local strings = f[12] or ""
+      if firstSnap then
+        if strings == "" then snapFirstHas = false end
+        firstSnap = false
+      elseif strings == "" then
+        snapLaterEmpty = true
+      elseif strings == lastStrings then
+        snapRepeats = true
+      end
+      if strings ~= "" then lastStrings = strings end
+    end
+  end
+end
+expect(equipStringsRight, "an EQUIP line's item string doesn't match its item")
+expect(snapFirstHas, "a session's first SNAP doesn't list the worn items' strings")
+expect(snapLaterEmpty, "no later SNAP left the strings out although nothing changed")
+expect(not snapRepeats, "a SNAP repeated the strings it had already written")
 expect(recapNamed, "a recap's hit from a player wasn't written with their GUID and the recap's name")
 expect(blessingNamed, "an aura cast by a player wasn't written with their GUID and name")
 expect(intellectUnnamed, "an aura whose caster the game can't name wasn't written with the GUID alone")

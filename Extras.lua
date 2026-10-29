@@ -479,13 +479,15 @@ local function recheckEquip(slot)
   item = WJ.field(item)
   if item == equipWritten[slot] then return end
   equipWritten[slot] = item
-  write("EQUIP", slot, item)
+  write("EQUIP", slot, item, WJ.equipString(slot))
   WJ.statsSoon()
 end
 
+-- Beside the item's ID, the item as the game links it (Core.lua): an upgrade
+-- or an enchant changes the string and not the ID.
 handlers.PLAYER_EQUIPMENT_CHANGED = function(slot)
   local item = WJ.field(GetInventoryItemID("player", slot))
-  write("EQUIP", slot, item)
+  write("EQUIP", slot, item, WJ.equipString(slot))
   WJ.statsSoon()
   if not usable(slot) then return end
   equipWritten[slot] = item

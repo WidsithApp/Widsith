@@ -10,6 +10,7 @@ Each version of Widsith, newest first, with the date it was handed out. The addo
 - Each loot line says which message it came from: loot from a corpse or container, an item the game put in your bags, something you crafted, a bonus roll or a refund. It also keeps the item exactly as the game linked it, so an upgrade step no longer looks like the item dropping again.
 - Quests are recorded whole: every objective is listed the moment you accept a quest, the game's own "ready to turn in" is recorded when it happens, and a quest that was already finished when you logged in is recorded as such.
 - Each change to your gold records why it happened whenever the game says, from loot and quest rewards to vendors, flights, the mailbox and the auction house, along with the window you had open. Quests also record their level when you accept them, and the members of your group are recorded with their levels.
+- Gear is recorded as the game links it, with its enchant, gems, suffix and upgrade, not only by item ID, so the site can show the piece you actually wore.
 
 ## 0.4.7 · 2026-10-29
 
