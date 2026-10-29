@@ -473,6 +473,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
     WJ.db = db
     WJ.registerEvents(self)
     if WJ.installHooks then run("hooks", WJ.installHooks) end
+    if WJ.installMoneyHooks then run("money hooks", WJ.installMoneyHooks) end
     self:UnregisterEvent("ADDON_LOADED")
   elseif event == "PLAYER_ENTERING_WORLD" then
     local isLogin, isReload = ...
@@ -527,6 +528,23 @@ local USED_APIS = {
   "C_ClassTalents.GetActiveConfigID", "C_Traits.ConfigHasStagedChanges", "C_Traits.GetConfigInfo",
   "C_Traits.GetTreeNodes", "C_Traits.GetNodeInfo", "C_Traits.GenerateImportString",
   "C_CurrencyInfo.GetCurrencyListSize", "C_CurrencyInfo.GetCurrencyListInfo",
+  "C_QuestLog.GetLogIndexForQuestID", "C_QuestLog.GetQuestDifficultyLevel",
+  -- money: the calls that move it, and what each states
+  "GetNumLootItems", "GetLootSlotType", "C_Container.GetContainerItemInfo", "C_MerchantFrame.SellAllJunkItems",
+  "BuybackItem", "GetBuybackItemInfo", "TakeTaxiNode", "TaxiNodeCost", "GetTrainerServiceCost",
+  "ConfirmTalentWipe", "GetQuestReward", "GetQuestMoneyToGet", "C_GossipInfo.SelectOption",
+  "SendMail", "GetSendMailMoney", "GetSendMailPrice", "TakeInboxMoney", "AutoLootMailItem", "TakeInboxItem",
+  "GetInboxNumItems", "GetInboxHeaderInfo", "GetInboxInvoiceInfo",
+  "C_AuctionHouse.PostItem", "C_AuctionHouse.ConfirmPostItem", "C_AuctionHouse.PostCommodity",
+  "C_AuctionHouse.ConfirmPostCommodity", "C_AuctionHouse.CalculateItemDeposit", "C_AuctionHouse.CalculateCommodityDeposit",
+  "C_Item.GetItemID", "C_AuctionHouse.PlaceBid", "C_AuctionHouse.ConfirmCommoditiesPurchase",
+  "C_AuctionHouse.CancelAuction", "C_AuctionHouse.GetCancelCost",
+  "DepositGuildBankMoney", "WithdrawGuildBankMoney", "BuyGuildBankTab", "GetGuildBankTabCost",
+  "C_Bank.DepositMoney", "C_Bank.WithdrawMoney", "C_Bank.PurchaseBankTab", "C_Bank.FetchNextPurchasableBankTabData",
+  "C_TransmogOutfitInfo.CommitAndApplyAllPending", "C_TransmogOutfitInfo.GetPendingTransmogCost",
+  "C_BarberShop.ApplyCustomizationChoices", "C_BarberShop.GetCurrentCost", "C_ItemUpgrade.UpgradeItem",
+  "C_CraftingOrders.PlaceNewOrder", "C_BlackMarket.ItemPlaceBid", "BuyGuildCharter", "GetGuildCharterCost",
+  "C_StableInfo.BuyStableSlot", "C_StableInfo.GetNextStableSlotCost",
 }
 
 local function lookup(path)

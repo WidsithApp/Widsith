@@ -1105,6 +1105,8 @@ local function writeTrade()
   if not trade or trade.written then return end
   trade.written = true
   write("TRADE", trade.guid, trade.gaveMoney, trade.gotMoney, trade.gave, trade.got, trade.name)
+  -- The money it moved explains the change that comes with it (Events.lua).
+  if WJ.moneyFromTrade then WJ.moneyFromTrade(trade.gaveMoney, trade.gotMoney) end
 end
 
 handlers.TRADE_SHOW = function() trade = nil readTrade() end

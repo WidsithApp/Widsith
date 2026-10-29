@@ -20,6 +20,12 @@
 -- must wait for the screen's end; and a quest disguise ending with one
 -- PLAYER_EQUIPMENT_CHANGED read while the head slot was empty, which the re-read a second
 -- later must put right.
+-- And money: every change with the reason the game gave before it (a corpse's coin through the
+-- loot window and its chat message, a share, a vendor's purchase, sale and repair, a discounted
+-- flight, a trainer, a letter sent with money and postage, an auction's proceeds taken from the
+-- mailbox, a guild bank withdrawal), a change with no reason while the mailbox is open, a reason
+-- the server refuses that must not explain the next change, and a loot message arriving after
+-- its own change. Also a quest's levels at accept and a party member's level.
 --
 -- Run from the addon's folder:
 --   npx --yes -p fengari-node-cli fengari tools/recorder-mock.lua
@@ -165,6 +171,17 @@ local lootSlots = {}
 function GetNumLootItems() return #lootSlots end
 function GetLootSlotLink(slot) return lootSlots[slot] and lootSlots[slot].link end
 function GetLootSourceInfo(slot) return lootSlots[slot] and lootSlots[slot].guid end
+-- 1 is an item; a coin slot says 2 (Enum.LootSlotType.Money).
+function GetLootSlotType(slot) return lootSlots[slot] and (lootSlots[slot].type or 1) end
+-- The money messages and coins, as the English client words them.
+YOU_LOOT_MONEY = "You loot %s"
+YOU_LOOT_MONEY_GUILD = "You loot %s (%s deposited to guild bank)"
+LOOT_MONEY_SPLIT = "Your share of the loot is %s."
+LOOT_MONEY_SPLIT_GUILD = "Your share of the loot is %s. (%s deposited to guild bank)"
+LOOT_MONEY_REFUND = "You are refunded %s."
+GOLD_AMOUNT = "%d Gold"
+SILVER_AMOUNT = "%d Silver"
+COPPER_AMOUNT = "%d Copper"
 function GetBuildInfo() return "1.60.1", "70658", "Oct 27 2026", 16001 end
 function GetLocale() return "enUS" end
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
@@ -172,6 +189,7 @@ C_AddOns = { GetAddOnMetadata = function() return "0.2.23" end }
 SlashCmdList = {}
 -- Post-hooks on functions a stub here defines; anything else is left alone.
 function hooksecurefunc(owner, name, fn)
+  if type(owner) == "string" then owner, name, fn = _G, owner, name end
   if type(owner) ~= "table" or type(rawget(owner, name)) ~= "function" then return end
   local original = owner[name]
   owner[name] = function(...) original(...) fn(...) end
@@ -180,19 +198,30 @@ end
 WorldMapFrame = { shown = false, IsShown = function(self) return self.shown end }
 C_ChatInfo = { PerformEmote = function() end }
 function InCombatLockdown() return inCombat end
-function UnitGUID(unit) if unit == "player" then return "Player-4747-0ABC1234" end end
+-- The NPC a window is open at, and a party member.
+local npcGUID
+local grouped = false
+function UnitGUID(unit)
+  if unit == "player" then return "Player-4747-0ABC1234" end
+  if unit == "npc" then return npcGUID end
+  if unit == "party1" and grouped then return "Player-4747-0CCCCCCC" end
+end
 function UnitName() return "Aldwin", "Thornby" end
 function GetRealmName() return "Whitemane" end
 function GetNormalizedRealmName() return "Whitemane" end
 function UnitClass() return "Warrior", "WARRIOR", 1 end
 function UnitRace() return "Human", "Human", 1 end
-function UnitLevel() return 5 end
+function UnitLevel(unit) if unit == "party1" then return 7 end return 5 end
 function UnitXP() return 100 end
 function UnitXPMax() return 2800 end
-function GetMoney() return 334 end
+local money = 334
+function GetMoney() return money end
 function GetInstanceInfo() return "Eastern Kingdoms", "none", 0, "", 0, 0, false, 0 end
 function IsResting() return false end
-function IsInGroup() return false end
+function IsInGroup() return grouped end
+function GetNumGroupMembers() return grouped and 2 or 0 end
+function UnitIsUnit(a, b) return a == b end
+function UnitFullName(unit) if unit == "party1" and grouped then return "Maela", nil end end
 function UnitIsGhost() return false end
 function UnitIsFeignDeath() return false end
 -- Away: hidden while afkHidden, as UnitIsAFK is under the game's chat lockdown.
@@ -203,12 +232,14 @@ local inventory = {}
 function GetInventoryItemID(_, slot) return inventory[slot] end
 -- The quest log: entries with objectives, and whether each is ready to turn in. Quest 200 is in
 -- the log from the first session, already finished; quest 100 is accepted and played in a scene.
-local questLog = { { questID = 200, title = "An Old Errand", ready = true,
+local questLog = { { questID = 200, title = "An Old Errand", ready = true, level = 2,
   objectives = { { numFulfilled = 1, numRequired = 1, type = "item", text = "Old Letter" } } } }
 local function questByID(id) for _, q in ipairs(questLog) do if q.questID == id then return q end end end
 C_QuestLog = setmetatable({
   GetNumQuestLogEntries = function() return #questLog end,
-  GetInfo = function(i) local q = questLog[i] return q and { questID = q.questID, title = q.title, isHeader = false, isHidden = false } end,
+  GetInfo = function(i) local q = questLog[i] return q and { questID = q.questID, title = q.title, level = q.level, isHeader = false, isHidden = false } end,
+  GetLogIndexForQuestID = function(id) for i, q in ipairs(questLog) do if q.questID == id then return i end end end,
+  GetQuestDifficultyLevel = function(id) local q = questByID(id) return q and q.difficulty end,
   GetQuestObjectives = function(id) local q = questByID(id) return q and q.objectives end,
   GetTitleForQuestID = function(id) local q = questByID(id) return q and q.title end,
   ReadyForTurnIn = function(id) local q = questByID(id) return q ~= nil and q.ready == true end,
@@ -218,7 +249,40 @@ ERR_ZONE_EXPLORED = "Discovered: %s"
 ERR_ZONE_EXPLORED_XP = "Discovered %s: %d experience gained"
 ERR_TRADE_COMPLETE = "Trade complete."
 
-Enum = { DamageMeterType = { DamageDone = 0, DamageTaken = 7, HealingDone = 2, EnemyDamageTaken = 10 } }
+Enum = { DamageMeterType = { DamageDone = 0, DamageTaken = 7, HealingDone = 2, EnemyDamageTaken = 10 },
+  LootSlotType = { None = 0, Item = 1, Money = 2, Currency = 3 },
+  PlayerInteractionType = { None = 0, TradePartner = 1, Item = 2, Gossip = 3, QuestGiver = 4, Merchant = 5, TaxiNode = 6,
+    Trainer = 7, Banker = 8, GuildBanker = 10, Registrar = 11, MailInfo = 17, Auctioneer = 21 } }
+
+-- The windows that move money: a merchant (a stack of five listed at 250 copper, cloth in the
+-- bags that sells at 10 each, a repair bill of 340), flight paths listed at 500 and 600, a
+-- trainer's service at 500, the mailbox (money to attach, postage of 30, the inbox), and the
+-- guild bank. Each function the default UI calls to move money is defined, so it can be hooked.
+local merchantOpen, sendMoney, inbox = false, 0, {}
+MerchantFrame = { IsShown = function() return merchantOpen end }
+C_MerchantFrame = { GetItemInfo = function() return { price = 250, stackCount = 5 } end, SellAllJunkItems = function() end }
+C_Container = setmetatable({ UseContainerItem = function() end,
+  GetContainerItemInfo = function() return { itemID = 2589, stackCount = 3 } end }, { __index = function() return nothing end })
+C_Item = setmetatable({ GetItemInfo = function() return "Linen Cloth", nil, 1, 5, 0, "Trade Goods", "Cloth", 200, "", 0, 10 end },
+  { __index = function() return nothing end })
+function BuyMerchantItem() end
+function RepairAllItems() end
+function GetRepairAllCost() if merchantOpen then return 340, true end return 0, false end
+function TakeTaxiNode() end
+function TaxiNodeCost(i) return ({ [3] = 500, [4] = 600 })[i] end
+function BuyTrainerService() end
+function GetTrainerServiceCost() return 500, 0, 0 end
+function SendMail() end
+function GetSendMailMoney() return sendMoney end
+function GetSendMailPrice() return 30 end
+function GetInboxNumItems() return #inbox end
+function GetInboxHeaderInfo(i)
+  local l = inbox[i]
+  if l then return nil, nil, l.sender, l.subject, l.money, l.cod, 30, false, true, false, false, false, false end
+end
+function GetInboxInvoiceInfo(i) return inbox[i] and inbox[i].invoice end
+function TakeInboxMoney() end
+function WithdrawGuildBankMoney() end
 local fights = { { sessionID = 88, name = "Kobold Vermin", durationSeconds = 7 } }
 -- A fight the meter isn't whole for at the instant combat ends, until the clock passes `at`:
 -- "missing" leaves this character's entry out (as the game once did), "secret" still hides
@@ -457,7 +521,7 @@ fire("UNIT_AURA", "player", { addedAuras = { { name = "Blessing of Might", spell
 -- a buff from a player the game can't name (GetPlayerInfoByGUID answers nothing for them)
 fire("UNIT_AURA", "player", { addedAuras = { { name = "Arcane Intellect", spellId = 1459, isHelpful = true, duration = 1800, applications = 0, auraInstanceID = 134 } } })
 -- a quest accepted with two objectives, one advanced, both met (ready to turn in), handed in
-questLog[#questLog + 1] = { questID = 100, title = "Boars and a Key", ready = false, objectives = {
+questLog[#questLog + 1] = { questID = 100, title = "Boars and a Key", ready = false, level = 4, difficulty = 6, objectives = {
   { numFulfilled = 0, numRequired = 8, type = "monster", text = "Boar slain" },
   { numFulfilled = 0, numRequired = 1, type = "item", text = "Rusty Key" } } }
 fire("QUEST_ACCEPTED", 100)
@@ -471,6 +535,8 @@ questLog[2].ready = true
 fire("UNIT_QUEST_LOG_CHANGED", "player")
 advance(1)
 fire("QUEST_TURNED_IN", 100, 250, 1200)
+money = money + 1200
+fire("PLAYER_MONEY")
 table.remove(questLog, 2)
 fire("QUEST_REMOVED", 100)
 fire("UNIT_QUEST_LOG_CHANGED", "player")
@@ -705,6 +771,106 @@ advance(loadingTo - clock)
 fire("PLAYER_ENTERING_WORLD", false, false)
 fire("LOADING_SCREEN_DISABLED")
 advance(3)
+
+-- a party of two forms and breaks up: the member's level beside the member
+grouped = true
+fire("GROUP_ROSTER_UPDATE")
+grouped = false
+fire("GROUP_LEFT")
+
+-- Money: each change is GetMoney() moving and PLAYER_MONEY firing.
+local moneyChanges = 1   -- the quest's reward, above
+local function change(copper)
+  money = money + copper
+  moneyChanges = moneyChanges + 1
+  fire("PLAYER_MONEY")
+end
+local function openWindow(name, guid)
+  npcGUID = guid
+  fire("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", Enum.PlayerInteractionType[name])
+end
+local function closeWindow(name)
+  fire("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", Enum.PlayerInteractionType[name])
+  npcGUID = nil
+end
+local CORPSE = "Creature-0-4621-0-46196-299-0000C0FFEE"
+local VENDOR = "Creature-0-4621-0-46196-1250-00004AAAAA"
+local FLIGHT = "Creature-0-4621-0-46196-352-00004BBBBB"
+local TRAINER = "Creature-0-4621-0-46196-914-00004CCCCC"
+-- a corpse's coin: the loot window lists it, the chat message states it
+lootSlots = { { type = 2, guid = CORPSE } }
+fire("LOOT_OPENED")
+fire("CHAT_MSG_MONEY", "You loot 1 Silver, 20 Copper")
+change(120)
+advance(6)
+-- a share of someone else's loot, with no loot window of the player's own
+fire("CHAT_MSG_MONEY", "Your share of the loot is 45 Copper.")
+change(45)
+advance(1)
+-- a vendor: two of a stack of five bought, three cloth sold, everything repaired
+merchantOpen = true
+openWindow("Merchant", VENDOR)
+fire("MERCHANT_SHOW")
+BuyMerchantItem(1, 2)
+change(-100)
+advance(0.5)
+C_Container.UseContainerItem(0, 1)
+change(30)
+advance(0.5)
+RepairAllItems(false)
+change(-340)
+advance(0.5)
+merchantOpen = false
+closeWindow("Merchant")
+fire("MERCHANT_CLOSED")
+-- a flight listed at 500 that costs 450 with the faction discount
+openWindow("TaxiNode", FLIGHT)
+TakeTaxiNode(3)
+change(-450)
+closeWindow("TaxiNode")
+advance(1)
+-- a trainer
+openWindow("Trainer", TRAINER)
+BuyTrainerService(2)
+change(-500)
+closeWindow("Trainer")
+advance(1)
+-- the mailbox: a letter sent with 2 silver and the postage, then an auction's proceeds taken
+openWindow("MailInfo", nil)
+sendMoney = 200
+SendMail("Bertrand", "For the road", "")
+change(-200)
+change(-30)
+sendMoney = 0
+advance(1)
+inbox = { { sender = "Stormwind Auction House", subject = "Auction successful: Linen Cloth", money = 7600, cod = 0, invoice = "seller" } }
+fire("MAIL_INBOX_UPDATE")
+TakeInboxMoney(1)
+change(7600)
+advance(2.5)
+-- money that moves with the mailbox open and nothing said why
+change(15)
+closeWindow("MailInfo")
+advance(1)
+-- a guild bank withdrawal
+openWindow("GuildBanker", nil)
+WithdrawGuildBankMoney(20000)
+change(20000)
+closeWindow("GuildBanker")
+advance(1)
+-- a flight the server refuses: no change follows, and the next change, over two seconds later,
+-- isn't explained by it
+openWindow("TaxiNode", FLIGHT)
+TakeTaxiNode(4)
+closeWindow("TaxiNode")
+advance(2.2)
+change(7)
+-- a loot message arriving after its own change: it explains nothing that follows
+change(65)
+fire("CHAT_MSG_MONEY", "You loot 65 Copper")
+advance(1)
+change(3)
+advance(1)
 
 -- pause and resume: a fresh baseline
 SlashCmdList.WIDSITH("pause")
@@ -968,6 +1134,60 @@ expect(recapNamed, "a recap's hit from a player wasn't written with their GUID a
 expect(blessingNamed, "an aura cast by a player wasn't written with their GUID and name")
 expect(intellectUnnamed, "an aura whose caster the game can't name wasn't written with the GUID alone")
 expect(not wordPlayer, "the word Player was written for a caster or a recap's source")
+
+-- Money: in the first session, each change with the reason, window, stated amount and source
+-- the scene gave it, by how much the total moved; nothing written for the refused flight; no
+-- letter's sender or subject, or mail's recipient, anywhere.
+local moneyLines, previousTotal = {}, 334
+local quest, party, privateWritten = nil, nil, false
+for line in (table.concat(WidsithDB.sessions[1].chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+  local f = {}
+  for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+  if f[2] == "MONEY" then
+    local total = tonumber(f[3])
+    moneyLines[#moneyLines + 1] = { delta = total - previousTotal, kind = f[4] or "", window = f[5] or "", said = f[6] or "", source = f[7] or "", fields = #f }
+    previousTotal = total
+  end
+  if f[2] == "QACCEPT" and f[3] == "100" then quest = f end
+  if f[2] == "GROUP" and f[3] == "2" then party = f end
+end
+for _, session in ipairs(WidsithDB.sessions) do
+  local text = table.concat(session.chunks, "\n")
+  if text:find("Stormwind Auction House", 1, true) or text:find("Auction successful", 1, true) or text:find("Bertrand", 1, true) then
+    privateWritten = true
+  end
+end
+local expectedMoney = {
+  { "a quest's reward", 1200, "quest", "", "1200", "" },
+  { "a corpse's coin", 120, "loot", "", "120", CORPSE },
+  { "a share", 45, "share", "", "45", "" },
+  { "a vendor's purchase", -100, "buy", "merchant", "100", VENDOR },
+  { "a sale to a vendor", 30, "sell", "merchant", "30", VENDOR },
+  { "a repair", -340, "repair", "merchant", "340", VENDOR },
+  { "a discounted flight", -450, "taxi", "taxinode", "500", FLIGHT },
+  { "a trainer's service", -500, "train", "trainer", "500", TRAINER },
+  { "money sent by mail", -200, "mailsend", "mailinfo", "200", "" },
+  { "postage", -30, "postage", "mailinfo", "30", "" },
+  { "an auction's proceeds", 7600, "ahsale", "mailinfo", "7600", "" },
+  { "a change with no reason at the mailbox", 15, "", "mailinfo", "", "" },
+  { "a guild bank withdrawal", 20000, "guildbankout", "guildbanker", "20000", "" },
+  { "the change after a refused flight", 7, "", "", "", "" },
+  { "a change whose loot message came after it", 65, "", "", "", "" },
+  { "the change after that late message", 3, "", "", "", "" },
+}
+expect(#moneyLines == moneyChanges and #moneyLines == #expectedMoney,
+  #moneyLines .. " MONEY lines for " .. moneyChanges .. " changes: a reason no change followed wrote a line, or a change wrote none")
+for i, e in ipairs(expectedMoney) do
+  local m = moneyLines[i]
+  local got = m and string.format("%d %s/%s/%s/%s", m.delta, m.kind, m.window, m.said, m.source) or "nothing"
+  expect(m and m.fields == 7 and m.delta == e[2] and m.kind == e[3] and m.window == e[4] and m.said == e[5] and m.source == e[6],
+    e[1] .. " isn't written as " .. string.format("%d %s/%s/%s/%s", e[2], e[3], e[4], e[5], e[6]) .. ": " .. got)
+end
+expect(not privateWritten, "a letter's sender or subject, or a letter's recipient, was written")
+expect(quest ~= nil and quest[6] == "4" and quest[7] == "6",
+  "a quest's level and difficulty level weren't written at accept: " .. (quest and table.concat(quest, " ", 6) or "no QACCEPT"))
+expect(party ~= nil and party[5] == "1:Player-4747-0CCCCCCC:Maela-Whitemane" and party[6] == "7",
+  "a party member's level wasn't written beside them: " .. (party and table.concat(party, " ", 3) or "no GROUP"))
 
 local NEW = { FIGHT = true, RECAP = true, AURA = true, CC = true, MIRROR = true, DISCOVER = true, TALLY = true, NPCSAY = true, RULES = true,
   LEVEL = true, DEATH = true, COMBAT = true, SESSION = true, END = true, ERR = true, REP = true, SPEECH = true, RECIPES = true,

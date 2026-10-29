@@ -13,6 +13,43 @@ WJ.handlers = handlers
 
 local playerGUID
 
+-- Values that may be compared, added or joined: present, of the right type and
+-- not secret. Doing any of those to a secret value throws.
+local function secret(v)
+  return issecretvalue ~= nil and issecretvalue(v)
+end
+local function plainNumber(v)
+  if type(v) == "number" and not secret(v) then return v end
+end
+local function plainString(v)
+  if type(v) == "string" and not secret(v) and v ~= "" then return v end
+end
+local function plainTable(v)
+  if type(v) == "table" and not secret(v) then return v end
+end
+
+-- A game function by its dotted name ("C_Bank.DepositMoney"), and where it
+-- lives: the namespace table, or _G for a global.
+local function resolve(path)
+  local namespace, name = path:match("^([^%.]+)%.(.+)$")
+  if namespace then return _G[namespace], name end
+  return _G, path
+end
+
+local function pass(ok, ...)
+  if ok then return ... end
+end
+
+-- What the named game function returns, or nothing when the client lacks it
+-- or it throws.
+local function ask(path, ...)
+  local owner, name = resolve(path)
+  if type(owner) ~= "table" then return end
+  local fn = owner[name]
+  if type(fn) ~= "function" then return end
+  return pass(pcall(fn, ...))
+end
+
 ---------------------------------------------------------------------------
 -- World / instance
 ---------------------------------------------------------------------------
@@ -89,9 +126,9 @@ end
 
 ---------------------------------------------------------------------------
 -- Group. Size, kind and who the other members are: class, GUID and
--- Name-Realm (character names are public in WoW). GROUP_ROSTER_UPDATE
--- fires often, so a line is written only when the picture changed; the
--- opening state is seeded at session start.
+-- Name-Realm (character names are public in WoW), and each one's level in
+-- the same order. GROUP_ROSTER_UPDATE fires often, so a line is written only
+-- when the picture changed; the opening state is seeded at session start.
 ---------------------------------------------------------------------------
 
 local lastGroup
@@ -99,7 +136,7 @@ local lastGroup
 local function groupLine()
   local size = GetNumGroupMembers() or 0
   local kind = IsInRaid() and "raid" or (IsInGroup() and "party" or "none")
-  local members = {}
+  local members, levels = {}, {}
   if size > 0 then
     local prefix, count = kind == "raid" and "raid" or "party", kind == "raid" and size or size - 1
     for i = 1, count do
@@ -114,18 +151,21 @@ local function groupLine()
         if realm == "" then realm = WJ.field(GetNormalizedRealmName()) end
         local full = name ~= "" and (name .. "-" .. realm) or ""
         members[#members + 1] = WJ.field(classID) .. ":" .. WJ.field(UnitGUID(unit)) .. ":" .. full
+        -- A level the game hides is an empty entry, so the list stays in step with the members.
+        levels[#levels + 1] = WJ.field(UnitLevel(unit))
       end
     end
   end
-  return size, kind, table.concat(members, ",")
+  return size, kind, table.concat(members, ","), table.concat(levels, ",")
 end
 
 local function writeGroupIfChanged()
-  local size, kind, classes = groupLine()
+  local size, kind, classes, levels = groupLine()
   local key = size .. kind .. classes
+  if levels ~= "" then key = key .. "\t" .. levels end
   if key == lastGroup then return end
   lastGroup = key
-  write("GROUP", size, kind, classes)
+  write("GROUP", size, kind, classes, levels)
 end
 
 handlers.GROUP_ROSTER_UPDATE = writeGroupIfChanged
@@ -172,9 +212,7 @@ handlers.PLAYER_LEVEL_UP = function(level, ...)
   C_Timer.After(1, WJ.guard("levelSnapshot", WJ.snapshot))
 end
 
-handlers.PLAYER_MONEY = function()
-  write("MONEY", GetMoney())
-end
+-- MONEY is written in its own section below, with the reason for each change.
 
 local deathOutstanding = false
 local lastFeignClock
@@ -400,9 +438,20 @@ handlers.QUEST_LOG_UPDATE = function()
   if WJ.debug then print("|cff8888ffWJ|r QUEST_LOG_UPDATE") end
 end
 
+-- The quest's own level, and the level the game rates its difficulty by (the
+-- colour of its name in the log, which follows the player on a quest that
+-- scales). Each is empty when the client can't say or hides it.
+local function questLevels(questID)
+  local index = plainNumber((ask("C_QuestLog.GetLogIndexForQuestID", questID)))
+  local info = index and plainTable((ask("C_QuestLog.GetInfo", index)))
+  local level = info and plainNumber(info.level)
+  local difficulty = plainNumber((ask("C_QuestLog.GetQuestDifficultyLevel", questID)))
+  return level, difficulty
+end
+
 handlers.QUEST_ACCEPTED = function(questID)
   local title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(questID)
-  write("QACCEPT", questID, giverGUID(), title)
+  write("QACCEPT", questID, giverGUID(), title, questLevels(questID))
   counts.quests = counts.quests + 1
   -- Its objectives, listed at once; a quest the game hands over already
   -- finished is ready from this moment.
@@ -417,6 +466,9 @@ end
 handlers.QUEST_TURNED_IN = function(questID, xpReward, moneyReward)
   write("QTURNIN", questID, xpReward, moneyReward, giverGUID())
   counts.quests = counts.quests + 1
+  -- The reward's money, as the game states it, explains the change it brings.
+  local reward = plainNumber(moneyReward)
+  if reward and reward > 0 then WJ.moneyReason("quest", reward, nil, { after = true }) end
   objectives[questID], ready[questID] = nil, nil
 end
 
@@ -539,9 +591,12 @@ local function buildLootPatterns()
   end
 end
 
+local buildMoneyPatterns   -- the money messages' patterns, built the same way (the money section)
+
 -- The format strings this client lacks, for /widsith check.
 function WJ.missingLootFormatNames()
   if not lootPatterns then buildLootPatterns() end
+  buildMoneyPatterns()
   return missingLootFormats
 end
 
@@ -612,6 +667,430 @@ handlers.CHAT_MSG_LOOT = function(msg, _, _, _, _, _, _, _, _, _, _, guid)
 end
 
 ---------------------------------------------------------------------------
+-- Money: MONEY total kind window said source, on every PLAYER_MONEY.
+--
+-- PLAYER_MONEY has no payload: GetMoney() is the new total, and the change is
+-- the difference from the last one. The game never says in it why money
+-- moved; it says so around it. Either the default UI calls a function (buy,
+-- repair, fly, take a letter's money), or the game reports it in an event or a
+-- chat message of its own (a quest's reward, a bonus roll, "You loot 1
+-- Silver"). Each of those sets a pending reason: its kind, the amount the game
+-- stated for it, and where it came from when the game names that (the corpse,
+-- the vendor). The next change takes the oldest reason still pending. A reason
+-- that no change follows within two seconds is dropped: the server refused it
+-- (a flight the player couldn't afford), so it writes nothing.
+--
+-- The hooks are post-hooks (hooksecurefunc): they show that the call was
+-- made, never that it worked, so the change is the figure and the stated
+-- amount is only a check on it. A flight's listed cost, for one, ignores the
+-- faction discount. Beside the reason is the window open at the time, as the
+-- interaction manager names it, which is how the game's own money receipts
+-- tell the mailbox's takings from a merchant's.
+---------------------------------------------------------------------------
+
+local MONEY_WINDOW = 2    -- s a reason waits for the change it explains
+local AFTER = { after = true }
+local pending = {}        -- reasons waiting for a change, oldest first
+local lastTotal           -- the total the last change left
+local lastChange          -- the last change: when, by how much, and the reason it was given
+
+local function expireReasons(now)
+  for i = #pending, 1, -1 do
+    if now - pending[i].at >= MONEY_WINDOW then table.remove(pending, i) end
+  end
+end
+
+-- Set a reason. opts.after: the game's own report, which may come after the
+-- change it explains; if the change already came (by the same amount, with no
+-- reason, or under another reason that stated it), the report adds nothing.
+-- opts.replaces: a confirmation that takes the place of the request before it.
+-- opts.repeats: one call that brings several changes (selling all junk), each
+-- of which carries it, until two seconds pass without one or something else
+-- is done.
+local function moneyReason(kind, said, source, opts)
+  local now = GetTime()
+  expireReasons(now)
+  said, source = plainNumber(said), plainString(source)
+  if opts and opts.after and said then
+    local c = lastChange
+    if c and now - c.at < MONEY_WINDOW and c.delta and math.abs(c.delta) == said and c.kind ~= kind then
+      c.kind = c.kind or kind
+      return
+    end
+    for _, r in ipairs(pending) do
+      if r.said == said and r.kind ~= kind then return end
+    end
+  end
+  for i = #pending, 1, -1 do
+    local r = pending[i]
+    if r.repeats or (opts and opts.replaces and r.kind == kind) then table.remove(pending, i) end
+  end
+  pending[#pending + 1] = { kind = kind, said = said, source = source, at = now, repeats = opts and opts.repeats }
+end
+WJ.moneyReason = moneyReason
+
+-- The windows open, by the interaction manager's own names for them
+-- (Enum.PlayerInteractionType: Merchant, MailInfo, TaxiNode …) in lower case.
+-- The names, never the numbers: the clients number them differently. Each
+-- remembers the NPC it was opened at, which is the source for a vendor's,
+-- trainer's or flight master's reason.
+local windowNames = {}
+do
+  local types = Enum and Enum.PlayerInteractionType
+  if type(types) == "table" then
+    for name, value in pairs(types) do
+      if type(name) == "string" and type(value) == "number" then windowNames[value] = name:lower() end
+    end
+  end
+end
+local openWindows = {}    -- in the order shown; the last is the one in front
+
+local function closeWindow(interactionType)
+  for i = #openWindows, 1, -1 do
+    if openWindows[i].type == interactionType then table.remove(openWindows, i) end
+  end
+end
+
+local function windowOpen(name)
+  for i = #openWindows, 1, -1 do
+    if openWindows[i].name == name then return openWindows[i] end
+  end
+end
+
+local moneyEvents = {}    -- joined to the handlers above at registration
+
+moneyEvents.PLAYER_INTERACTION_MANAGER_FRAME_SHOW = function(interactionType)
+  if not plainNumber(interactionType) then return end
+  closeWindow(interactionType)
+  openWindows[#openWindows + 1] = { type = interactionType, name = windowNames[interactionType],
+    guid = plainString(UnitGUID("npc")) }
+end
+moneyEvents.PLAYER_INTERACTION_MANAGER_FRAME_HIDE = function(interactionType)
+  if plainNumber(interactionType) then closeWindow(interactionType) end
+end
+-- A loading screen closes every window.
+moneyEvents.LOADING_SCREEN_ENABLED = function() openWindows = {} end
+
+handlers.PLAYER_MONEY = function()
+  local total = GetMoney()
+  local now = GetTime()
+  expireReasons(now)
+  local reason = pending[1]
+  if reason then
+    if reason.repeats then reason.at = now else table.remove(pending, 1) end
+  end
+  local window = openWindows[#openWindows]
+  write("MONEY", total, reason and reason.kind, window and window.name, reason and reason.said, reason and reason.source)
+  total = plainNumber(total)
+  lastChange = { at = now, delta = total and lastTotal and total - lastTotal, kind = reason and reason.kind }
+  lastTotal = total
+end
+
+-- Loot money. The loot window lists coin as a slot with no number in it
+-- (GetLootSlotType says Money); the amount is in the chat message the game
+-- prints, in the client's own words: "You loot %s", "Your share of the loot is
+-- %s.", and the forms with the guild's cut. Each is turned into a pattern the
+-- way the item messages are, the longer forms first so the plain one can't
+-- swallow them. The coins are read with the client's own "%d Gold", "%d
+-- Silver" and "%d Copper", and the stated amount is kept only when they
+-- account for every digit in it; anything else would be a guess.
+local MONEY_FORMATS = {
+  { "YOU_LOOT_MONEY_GUILD", "loot" },     { "YOU_LOOT_MONEY", "loot" },
+  { "LOOT_MONEY_SPLIT_GUILD", "share" },  { "LOOT_MONEY_SPLIT", "share" },
+  { "LOOT_MONEY_REFUND", "refund" },
+}
+local COIN_FORMATS = { { "GOLD_AMOUNT", 10000 }, { "SILVER_AMOUNT", 100 }, { "COPPER_AMOUNT", 1 } }
+local moneyPatterns, coinPatterns
+
+function buildMoneyPatterns()
+  if moneyPatterns then return end
+  moneyPatterns, coinPatterns = {}, {}
+  for _, entry in ipairs(MONEY_FORMATS) do
+    local fmt = _G[entry[1]]
+    if type(fmt) == "string" and fmt ~= "" then
+      moneyPatterns[#moneyPatterns + 1] = { pattern = (lootPattern(fmt)), kind = entry[2] }
+    else
+      missingLootFormats[#missingLootFormats + 1] = entry[1]
+    end
+  end
+  for _, entry in ipairs(COIN_FORMATS) do
+    local fmt = _G[entry[1]]
+    if type(fmt) == "string" and fmt ~= "" then
+      -- Unanchored: a coin is one part of the amount.
+      coinPatterns[#coinPatterns + 1] = { pattern = (lootPattern(fmt)):sub(2, -2), copper = entry[2] }
+    else
+      missingLootFormats[#missingLootFormats + 1] = entry[1]
+    end
+  end
+end
+
+-- "1 Silver, 20 Copper" -> 120, or nil when any digit is left unexplained.
+local function coinAmount(text)
+  local total, found, rest = 0, false, text
+  for _, coin in ipairs(coinPatterns) do
+    local n
+    rest = rest:gsub(coin.pattern, function(digits) n = tonumber(digits) return "" end, 1)
+    if n then total, found = total + n * coin.copper, true end
+  end
+  if not found or rest:find("%d") then return nil end
+  return total
+end
+
+-- The last loot window's coin: where it came from, and whether the window was
+-- a pickpocket's. Nothing marks a pickpocket's window as such; it is the one
+-- that opens within two seconds of Pick Pocket (spell 921) succeeding.
+local PICK_POCKET, PICK_POCKET_WINDOW = 921, 2
+local lootMoney = { at = -math.huge }
+local pickPocket = { at = -math.huge }
+
+moneyEvents.UNIT_SPELLCAST_SUCCEEDED = function(unit, _, spellID)
+  if unit ~= "player" or plainNumber(spellID) ~= PICK_POCKET then return end
+  pickPocket = { at = GetTime(), target = plainString(UnitGUID("target")) }
+end
+
+moneyEvents.LOOT_OPENED = function()
+  local now = GetTime()
+  local stolen = now - pickPocket.at <= PICK_POCKET_WINDOW
+  local moneySlot = Enum and Enum.LootSlotType and Enum.LootSlotType.Money
+  local source
+  local n = plainNumber((ask("GetNumLootItems"))) or 0
+  for slot = 1, n do
+    if moneySlot and plainNumber((ask("GetLootSlotType", slot))) == moneySlot then
+      source = plainString((ask("GetLootSourceInfo", slot)))
+      break
+    end
+  end
+  if stolen and not source then source = pickPocket.target end
+  lootMoney = { at = now, source = source, stolen = stolen }
+end
+
+moneyEvents.CHAT_MSG_MONEY = function(text)
+  if type(text) ~= "string" or secret(text) then return end
+  buildMoneyPatterns()
+  for _, p in ipairs(moneyPatterns) do
+    local amount = text:match(p.pattern)
+    if amount then
+      local kind = p.kind
+      local fromWindow = kind ~= "refund" and GetTime() - lootMoney.at <= LOOT_WINDOW
+      if kind == "loot" and fromWindow and lootMoney.stolen then kind = "pickpocket" end
+      moneyReason(kind, coinAmount(amount), fromWindow and lootMoney.source or nil, AFTER)
+      return
+    end
+  end
+end
+
+-- Money the game states outright, as an event: a bonus roll's or a toast's
+-- coin, a crafting order's commission.
+moneyEvents.BONUS_ROLL_RESULT = function(typeIdentifier, _, quantity)
+  if plainString(typeIdentifier) == "money" then moneyReason("bonus", quantity, nil, AFTER) end
+end
+moneyEvents.SHOW_LOOT_TOAST = function(typeIdentifier, _, quantity)
+  if plainString(typeIdentifier) == "money" then moneyReason("toast", quantity, nil, AFTER) end
+end
+moneyEvents.CRAFTINGORDERS_DISPLAY_CRAFTER_FULFILLED_MSG = function(_, _, _, tipAmount)
+  local tip = plainNumber(tipAmount)
+  if tip and tip > 0 then moneyReason("commission", tip, nil, AFTER) end
+end
+
+-- A completed trade (Extras.lua writes its line, then tells the money). Money
+-- both ways in one trade states no single amount.
+function WJ.moneyFromTrade(gave, got)
+  gave, got = plainNumber(gave) or 0, plainNumber(got) or 0
+  if gave == 0 and got == 0 then return end
+  local said
+  if gave == 0 then said = got elseif got == 0 then said = gave end
+  moneyReason("trade", said, nil, AFTER)
+end
+
+-- What the game says while a window is open, kept for the call that follows:
+-- the repair bill (the repair hook runs once the bill is paid), a quest's fee,
+-- the cost a confirmation dialog names, a commodity's total, and each letter's
+-- money and cash on delivery. A letter's sender is never read.
+local repairCost, questFee, talentWipeCost, commodityTotal
+local gossipCost = {}
+local letters = {}
+
+local function noteRepairCost()
+  local cost, canRepair = ask("GetRepairAllCost")
+  repairCost = (not secret(canRepair) and canRepair) and plainNumber(cost) or nil
+end
+moneyEvents.MERCHANT_SHOW = noteRepairCost
+moneyEvents.MERCHANT_UPDATE = noteRepairCost
+
+moneyEvents.QUEST_COMPLETE = function() questFee = plainNumber((ask("GetQuestMoneyToGet"))) end
+moneyEvents.CONFIRM_TALENT_WIPE = function(cost) talentWipeCost = plainNumber(cost) end
+moneyEvents.GOSSIP_CONFIRM = function(gossipID, _, cost) gossipCost = { id = plainNumber(gossipID), cost = plainNumber(cost) } end
+moneyEvents.COMMODITY_PRICE_UPDATED = function(_, total) commodityTotal = plainNumber(total) end
+
+local function readLetter(index)
+  local money, cod = select(5, ask("GetInboxHeaderInfo", index))
+  return { money = plainNumber(money), cod = plainNumber(cod), invoice = plainString((ask("GetInboxInvoiceInfo", index))) }
+end
+moneyEvents.MAIL_INBOX_UPDATE = function()
+  letters = {}
+  for i = 1, plainNumber((ask("GetInboxNumItems"))) or 0 do letters[i] = readLetter(i) end
+end
+local function letter(index)
+  return (plainNumber(index) and letters[index]) or readLetter(index)
+end
+-- An auction house's letter says what it is in its invoice: a sale's
+-- proceeds, or a buyer's money coming back.
+local function letterKind(l)
+  if l.invoice == "seller" or l.invoice == "seller_temp_invoice" then return "ahsale" end
+  if l.invoice == "buyer" then return "ahrefund" end
+  return "mailtake"
+end
+
+-- A vendor's stated price: the listing is for one stack, so a purchase with
+-- no quantity buys a stack, and one with a quantity buys that many of the
+-- stack's units (as the merchant frame works out whether it can be afforded).
+local function buyPrice(index, quantity)
+  local info = plainTable((ask("C_MerchantFrame.GetItemInfo", index)))
+  local price = info and plainNumber(info.price)
+  if not price then return end
+  local stack, count = plainNumber(info.stackCount), plainNumber(quantity)
+  if not count or not stack or stack < 1 then return price end
+  return math.floor(price / stack * count + 0.5)
+end
+
+-- An item sold from the bags: its unit sell price times the stack. The hook
+-- runs before the bag updates, so the slot still holds what was sold.
+local function sellPrice(bag, slot)
+  if not windowOpen("merchant") then return nil, false end
+  local info = plainTable((ask("C_Container.GetContainerItemInfo", bag, slot)))
+  local itemID = info and plainNumber(info.itemID)
+  if not itemID then return end
+  local unit = plainNumber((select(11, ask("C_Item.GetItemInfo", itemID))))
+  local count = plainNumber(info.stackCount) or 1
+  return unit and unit * count
+end
+
+local function commodityDeposit(item, duration, quantity)
+  return (ask("C_AuctionHouse.CalculateCommodityDeposit", (ask("C_Item.GetItemID", item)), duration, quantity))
+end
+local function itemDeposit(item, duration, quantity)
+  return (ask("C_AuctionHouse.CalculateItemDeposit", item, duration, quantity))
+end
+
+-- The functions the default UI calls to move money, one row each: the
+-- function, the kind, and what the game states for it. That reader gets the
+-- call's arguments and returns the amount; a second value names a different
+-- kind, or false when the call moves no money after all. npc names the window
+-- whose NPC is the source; the rest are moneyReason's options.
+local MONEY_HOOKS = {
+  { "BuyMerchantItem", "buy", buyPrice, npc = "merchant" },
+  { "C_Container.UseContainerItem", "sell", sellPrice, npc = "merchant" },
+  { "C_MerchantFrame.SellAllJunkItems", "junk", nil, npc = "merchant", repeats = true },
+  { "BuybackItem", "buyback", function(slot) return (select(3, ask("GetBuybackItemInfo", slot))) end, npc = "merchant" },
+  { "RepairAllItems", "repair", function(guildBankRepair)
+    return repairCost, guildBankRepair and "guildrepair" or nil
+  end, npc = "merchant" },
+  { "TakeTaxiNode", "taxi", function(index) return (ask("TaxiNodeCost", index)) end, npc = "taxinode" },
+  { "BuyTrainerService", "train", function(index) return (ask("GetTrainerServiceCost", index)) end, npc = "trainer" },
+  { "ConfirmTalentWipe", "respec", function() return talentWipeCost end },
+  { "GetQuestReward", "questfee", function()
+    if questFee and questFee > 0 then return questFee end
+    return nil, false
+  end },
+  { "C_GossipInfo.SelectOption", "gossip", function(optionID, _, confirmed)
+    local cost = gossipCost.cost
+    if confirmed ~= true or not cost or cost <= 0 then return nil, false end
+    if gossipCost.id and plainNumber(optionID) ~= gossipCost.id then return nil, false end
+    return cost
+  end },
+  -- Sending a letter takes the money attached and the postage, in that order.
+  { "SendMail", "mailsend", function()
+    local money = plainNumber((ask("GetSendMailMoney")))
+    if not money or money <= 0 then return nil, false end
+    return money
+  end },
+  { "SendMail", "postage", function() return (ask("GetSendMailPrice")) end },
+  { "TakeInboxMoney", "mailtake", function(index)
+    local l = letter(index)
+    return l.money, letterKind(l)
+  end },
+  { "AutoLootMailItem", "mailtake", function(index)
+    local l = letter(index)
+    if l.cod and l.cod > 0 then return l.cod, "cod" end
+    if l.money and l.money > 0 then return l.money, letterKind(l) end
+    return nil, false
+  end },
+  { "TakeInboxItem", "cod", function(index)
+    local l = letter(index)
+    if l.cod and l.cod > 0 then return l.cod end
+    return nil, false
+  end },
+  { "C_AuctionHouse.PostItem", "ahdeposit", itemDeposit },
+  { "C_AuctionHouse.ConfirmPostItem", "ahdeposit", itemDeposit, replaces = true },
+  { "C_AuctionHouse.PostCommodity", "ahdeposit", commodityDeposit },
+  { "C_AuctionHouse.ConfirmPostCommodity", "ahdeposit", commodityDeposit, replaces = true },
+  { "C_AuctionHouse.PlaceBid", "ahbid", function(_, bidAmount) return bidAmount end },
+  { "C_AuctionHouse.ConfirmCommoditiesPurchase", "ahbuy", function() return commodityTotal end },
+  { "C_AuctionHouse.CancelAuction", "ahcancel", function(auctionID)
+    return (ask("C_AuctionHouse.GetCancelCost", auctionID))
+  end },
+  { "DepositGuildBankMoney", "guildbankin", function(copper) return copper end },
+  { "WithdrawGuildBankMoney", "guildbankout", function(copper) return copper end },
+  { "BuyGuildBankTab", "guildtab", function() return (ask("GetGuildBankTabCost")) end },
+  { "C_Bank.DepositMoney", "bankin", function(_, amount) return amount end },
+  { "C_Bank.WithdrawMoney", "bankout", function(_, amount) return amount end },
+  { "C_Bank.PurchaseBankTab", "banktab", function(bankType)
+    local tab = plainTable((ask("C_Bank.FetchNextPurchasableBankTabData", bankType)))
+    return tab and tab.tabCost
+  end },
+  { "C_TransmogOutfitInfo.CommitAndApplyAllPending", "transmog", function()
+    return (ask("C_TransmogOutfitInfo.GetPendingTransmogCost"))
+  end },
+  { "C_BarberShop.ApplyCustomizationChoices", "barber", function() return (ask("C_BarberShop.GetCurrentCost")) end },
+  { "C_ItemUpgrade.UpgradeItem", "upgrade" },
+  { "C_CraftingOrders.PlaceNewOrder", "craftorder", function(orderInfo)
+    local info = plainTable(orderInfo)
+    return info and info.tipAmount
+  end },
+  { "C_BlackMarket.ItemPlaceBid", "blackmarket", function(_, bid) return bid end },
+  { "BuyGuildCharter", "charter", function() return (ask("GetGuildCharterCost")) end },
+  { "C_StableInfo.BuyStableSlot", "stable", function() return (ask("C_StableInfo.GetNextStableSlotCost")) end },
+}
+
+local function fromHook(signal, ...)
+  local kind, said = signal[2], nil
+  if signal[3] then
+    local amount, other = signal[3](...)
+    if other == false then return end
+    said, kind = amount, other or kind
+  end
+  local window = signal.npc and windowOpen(signal.npc)
+  moneyReason(kind, said, window and window.guid, signal)
+end
+
+-- Every hook guarded: a function this client lacks is skipped, and a throw in
+-- one is an ERR line named after it.
+function WJ.installMoneyHooks()
+  for _, signal in ipairs(MONEY_HOOKS) do
+    local owner, name = resolve(signal[1])
+    if type(owner) == "table" and type(owner[name]) == "function" then
+      local fn = WJ.guard(signal[1], function(...) fromHook(signal, ...) end)
+      if owner == _G then hooksecurefunc(name, fn) else hooksecurefunc(owner, name, fn) end
+    end
+  end
+end
+
+-- The money handlers join whatever else listens to the same event, each
+-- guarded on its own so a fault in one never silences the other.
+local function joinMoneyEvents()
+  for event, fn in pairs(moneyEvents) do
+    local first = handlers[event]
+    if first then
+      local a, b = WJ.guard(event, first), WJ.guard(event, fn)
+      handlers[event] = function(...) a(...) b(...) end
+    else
+      handlers[event] = fn
+    end
+  end
+  moneyEvents = {}
+end
+
+---------------------------------------------------------------------------
 -- Registration
 ---------------------------------------------------------------------------
 
@@ -627,6 +1106,7 @@ WJ.unitEvents = {
 -- A client without an event (WoW Forever has no pet battles, for one) throws on
 -- registering it. That family is simply not recorded; /widsith check lists them.
 function WJ.registerEvents(frame)
+  joinMoneyEvents()
   local missing = {}
   for event in pairs(handlers) do
     local unit = WJ.unitEvents[event]
@@ -650,6 +1130,7 @@ function WJ.seedState()
   if WJ.seedMoments then WJ.seedMoments() end
   lastResting = IsResting() and true or false
   if lastResting then write("REST", "enter") end
+  lastTotal, lastChange = plainNumber(GetMoney()), nil
   lastGroup = nil
   if IsInGroup() then writeGroupIfChanged() else lastGroup = "0none" end
   C_Timer.After(2, WJ.guard("questSeed", function() diffQuestLog(true) end))
