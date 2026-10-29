@@ -140,6 +140,10 @@ function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 local profileMs = 0
 function debugprofilestop() return profileMs end
 function GetServerTime() return 1790766000 + math.floor(clock) end
+-- Another player's name from their GUID, as the game knows it; nothing for one it hasn't met.
+function GetPlayerInfoByGUID(guid)
+  if guid == "Player-4747-0BBBBBBB" then return "Paladin", "PALADIN", "Human", "Human", 2, "Someone", "" end
+end
 function GetBuildInfo() return "1.60.1", "70658", "Oct 27 2026", 16001 end
 function GetLocale() return "enUS" end
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
@@ -232,7 +236,9 @@ C_DeathRecap = {
     return {
       { event = "SPELL_DAMAGE", spellId = 20793, spellName = "Fireball", school = 4, amount = 31, overkill = 4, currentHP = 27,
         timestamp = at, sourceGUID = "Creature-0-4621-0-46196-476-0000BCECFD", sourceName = "Kobold Geomancer Jaconelli" },
-      { event = "SWING_DAMAGE", school = 1, amount = 8, overkill = -1, currentHP = 35, timestamp = at - 6.9,
+      { event = "SPELL_DAMAGE", spellId = 172, spellName = "Corruption", school = 32, amount = 9, overkill = -1, currentHP = 36,
+        timestamp = at - 3.1, sourceGUID = "Player-4747-0BBBBBBB", sourceName = "Someone" },
+      { event = "SWING_DAMAGE", school = 1, amount = 8, overkill = -1, currentHP = 44, timestamp = at - 6.9,
         sourceGUID = "Creature-0-4621-0-46196-476-0000BCECFD" },
       SECRET,
       { event = "ENVIRONMENTAL_DAMAGE", environmentalType = "FALLING", amount = 12, overkill = -1, currentHP = 47, timestamp = at - 30 },
@@ -416,6 +422,8 @@ stat[347] = "2"
 fire("CRITERIA_UPDATE")
 fire("UNIT_AURA", "player", { removedAuraInstanceIDs = { 115, 999 } })
 fire("UNIT_AURA", "player", { addedAuras = { { name = "Blessing of Might", spellId = 19740, isHelpful = true, duration = 3600, applications = 0, auraInstanceID = 133 } } })
+-- a buff from a player the game can't name (GetPlayerInfoByGUID answers nothing for them)
+fire("UNIT_AURA", "player", { addedAuras = { { name = "Arcane Intellect", spellId = 1459, isHelpful = true, duration = 1800, applications = 0, auraInstanceID = 134 } } })
 fire("MIRROR_TIMER_START", "BREATH", 60000, 60000, -1, 0, "Breath")
 advance(4)
 fire("CHAT_MSG_SYSTEM", "Discovered Crystal Lake: 65 experience gained")
@@ -797,6 +805,25 @@ expect(refusedUnforeseen > 0, "the stand-in never refused the opening aura read"
 expect(not refusedKinds.AURA and not refusedKinds.ERR, "an opening aura read refused unforeseen wrote AURA or ERR")
 expect(refusedKinds.RULES and refusedKinds.TALLY and refusedKinds.CURRENCY,
   "the opening lost its other lines when the aura read was refused")
+
+-- Other players are named: a recap's hit from a player carries their GUID in full and the
+-- recap's name for them, an aura they cast carries their GUID and the name the game gives, and
+-- a caster the game can't name has the GUID alone. The word Player is never written.
+local recapNamed, blessingNamed, intellectUnnamed, wordPlayer = false, false, false, false
+for _, session in ipairs(WidsithDB.sessions) do
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local f = {}
+    for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+    if f[2] == "RECAP" and f[13] == "Player-4747-0BBBBBBB" and f[16] == "Someone" then recapNamed = true end
+    if f[2] == "AURA" and f[4] == "19740" and f[10] == "Player-4747-0BBBBBBB" and f[11] == "Someone" then blessingNamed = true end
+    if f[2] == "AURA" and f[4] == "1459" and f[10] == "Player-4747-0ABC1234" and (f[11] or "") == "" then intellectUnnamed = true end
+    if (f[2] == "AURA" and f[10] == "Player") or (f[2] == "RECAP" and f[13] == "Player") then wordPlayer = true end
+  end
+end
+expect(recapNamed, "a recap's hit from a player wasn't written with their GUID and the recap's name")
+expect(blessingNamed, "an aura cast by a player wasn't written with their GUID and name")
+expect(intellectUnnamed, "an aura whose caster the game can't name wasn't written with the GUID alone")
+expect(not wordPlayer, "the word Player was written for a caster or a recap's source")
 
 local NEW = { FIGHT = true, RECAP = true, AURA = true, CC = true, MIRROR = true, DISCOVER = true, TALLY = true, NPCSAY = true, RULES = true,
   LEVEL = true, DEATH = true, COMBAT = true, SESSION = true, END = true, ERR = true, REP = true, SPEECH = true, RECIPES = true,

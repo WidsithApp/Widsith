@@ -2,6 +2,10 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
+## 0.5.0 · not yet released
+
+- Other players are named. A buff another player casts on you records who cast it, and a death at another player's hands records who dealt each hit, as the game names them. Group members and trade partners were already named; this makes the recording consistent.
+
 ## 0.4.7 · 2026-10-29
 
 - Ready for WoW Forever's launch: the addon is marked for the released client (1.60.1) as well as for Retail 12.1.5, so either game loads it with no "out of date" warning. What it records is unchanged since 0.4.6.
