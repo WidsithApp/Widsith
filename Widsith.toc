@@ -2,7 +2,7 @@
 ## Title: Widsith
 ## Notes: Keeps a record of your character's journey as you play: where you went, what you did and when. Open the saved file at widsith.app to replay it.
 ## Author: Widsith
-## Version: 0.4.7
+## Version: 0.5.0
 ## SavedVariablesPerCharacter: WidsithDB, WidsithUI
 ## AddonCompartmentFunc: Widsith_OnAddonCompartmentClick
 ## IconTexture: Interface\AddOns\Widsith\media\emblem
