@@ -299,6 +299,8 @@ end
 
 function WJ.endSession(reason)
   if not session then return end
+  -- A money change still waiting for its frame goes in before the end (Events.lua).
+  if WJ.flushMoney then WJ.flushMoney() end
   WJ.write("END", GetServerTime(), reason)
   flush()
   session.closed = true
@@ -531,7 +533,7 @@ local USED_APIS = {
   "C_QuestLog.GetLogIndexForQuestID", "C_QuestLog.GetQuestDifficultyLevel",
   -- money: the calls that move it, and what each states
   "GetNumLootItems", "GetLootSlotType", "C_Container.GetContainerItemInfo", "C_MerchantFrame.SellAllJunkItems",
-  "BuybackItem", "GetBuybackItemInfo", "TakeTaxiNode", "TaxiNodeCost", "GetTrainerServiceCost",
+  "BuybackItem", "GetBuybackItemInfo", "GetNumBuybackItems", "TakeTaxiNode", "TaxiNodeCost", "GetTrainerServiceCost",
   "ConfirmTalentWipe", "GetQuestReward", "GetQuestMoneyToGet", "C_GossipInfo.SelectOption",
   "SendMail", "GetSendMailMoney", "GetSendMailPrice", "TakeInboxMoney", "AutoLootMailItem", "TakeInboxItem",
   "GetInboxNumItems", "GetInboxHeaderInfo", "GetInboxInvoiceInfo",

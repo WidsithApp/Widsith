@@ -865,11 +865,18 @@ TakeTaxiNode(4)
 closeWindow("TaxiNode")
 advance(2.2)
 change(7)
--- a loot message arriving after its own change: it explains nothing that follows
+-- a loot message arriving after its own change, in the same frame: it still explains that
+-- change, and nothing that follows
 change(65)
 fire("CHAT_MSG_MONEY", "You loot 65 Copper")
 advance(1)
 change(3)
+advance(1)
+-- two changes in one frame, the message for the second arriving after both: the amount tells
+-- them apart
+change(9)
+change(80)
+fire("CHAT_MSG_MONEY", "You loot 80 Copper")
 advance(1)
 
 -- pause and resume: a fresh baseline
@@ -1172,8 +1179,10 @@ local expectedMoney = {
   { "a change with no reason at the mailbox", 15, "", "mailinfo", "", "" },
   { "a guild bank withdrawal", 20000, "guildbankout", "guildbanker", "20000", "" },
   { "the change after a refused flight", 7, "", "", "", "" },
-  { "a change whose loot message came after it", 65, "", "", "", "" },
+  { "a change whose loot message came after it in the same frame", 65, "loot", "", "65", "" },
   { "the change after that late message", 3, "", "", "", "" },
+  { "the first of two changes in one frame", 9, "", "", "", "" },
+  { "the second, which the late message states exactly", 80, "loot", "", "80", "" },
 }
 expect(#moneyLines == moneyChanges and #moneyLines == #expectedMoney,
   #moneyLines .. " MONEY lines for " .. moneyChanges .. " changes: a reason no change followed wrote a line, or a change wrote none")

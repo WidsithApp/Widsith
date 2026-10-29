@@ -771,19 +771,60 @@ end
 -- A loading screen closes every window.
 moneyEvents.LOADING_SCREEN_ENABLED = function() openWindows = {} end
 
-handlers.PLAYER_MONEY = function()
-  local total = GetMoney()
-  local now = GetTime()
-  expireReasons(now)
-  local reason = pending[1]
-  if reason then
-    if reason.repeats then reason.at = now else table.remove(pending, 1) end
+-- A change is written a frame after its event, not at it: the message or
+-- event that explains it may arrive in the same frame, after PLAYER_MONEY
+-- itself (the chat line for looted coin does). The frame costs the line a few
+-- milliseconds of time. Within one frame's changes, a reason that states an
+-- amount goes to the change of exactly that amount first (a share and the
+-- player's own coin can land together); what is left takes the oldest reason.
+local changesDue = {}
+
+local function writeChanges()
+  local due = changesDue
+  changesDue = {}
+  if #due == 0 then return end
+  expireReasons(due[#due].at)
+  local running = lastTotal
+  for _, c in ipairs(due) do
+    local total = plainNumber(c.total)
+    c.delta = total and running and total - running
+    running = total
   end
+  for _, c in ipairs(due) do
+    if c.delta then
+      for i, r in ipairs(pending) do
+        if r.said and r.said == math.abs(c.delta) then
+          c.reason = r
+          if r.repeats then r.at = c.at else table.remove(pending, i) end
+          break
+        end
+      end
+    end
+  end
+  for _, c in ipairs(due) do
+    if not c.reason and pending[1] then
+      c.reason = pending[1]
+      if c.reason.repeats then c.reason.at = c.at else table.remove(pending, 1) end
+    end
+  end
+  for _, c in ipairs(due) do
+    local r = c.reason
+    write("MONEY", c.total, r and r.kind, c.window, r and r.said, r and r.source)
+    lastChange = { at = c.at, delta = c.delta, kind = r and r.kind }
+    lastTotal = plainNumber(c.total)
+  end
+end
+
+-- Written out at once when the session ends, so a change in the last frame
+-- before a logout or a pause isn't lost.
+function WJ.flushMoney()
+  writeChanges()
+end
+
+handlers.PLAYER_MONEY = function()
   local window = openWindows[#openWindows]
-  write("MONEY", total, reason and reason.kind, window and window.name, reason and reason.said, reason and reason.source)
-  total = plainNumber(total)
-  lastChange = { at = now, delta = total and lastTotal and total - lastTotal, kind = reason and reason.kind }
-  lastTotal = total
+  changesDue[#changesDue + 1] = { total = GetMoney(), at = GetTime(), window = window and window.name }
+  if #changesDue == 1 then C_Timer.After(0, WJ.guard("money", writeChanges)) end
 end
 
 -- Loot money. The loot window lists coin as a slot with no number in it
@@ -802,7 +843,7 @@ local MONEY_FORMATS = {
 local COIN_FORMATS = { { "GOLD_AMOUNT", 10000 }, { "SILVER_AMOUNT", 100 }, { "COPPER_AMOUNT", 1 } }
 local moneyPatterns, coinPatterns
 
-function buildMoneyPatterns()
+local function buildMoneyPatterns()
   if moneyPatterns then return end
   moneyPatterns, coinPatterns = {}, {}
   for _, entry in ipairs(MONEY_FORMATS) do
@@ -953,16 +994,19 @@ local function buyPrice(index, quantity)
   return math.floor(price / stack * count + 0.5)
 end
 
--- An item sold from the bags: its unit sell price times the stack. The hook
--- runs before the bag updates, so the slot still holds what was sold.
+-- An item sold from the bags: its unit sell price times the stack, while the
+-- slot still holds what was sold; once the bag has moved on, the sale is the
+-- newest entry of the merchant's buy-back list.
 local function sellPrice(bag, slot)
   if not windowOpen("merchant") then return nil, false end
   local info = plainTable((ask("C_Container.GetContainerItemInfo", bag, slot)))
   local itemID = info and plainNumber(info.itemID)
-  if not itemID then return end
-  local unit = plainNumber((select(11, ask("C_Item.GetItemInfo", itemID))))
-  local count = plainNumber(info.stackCount) or 1
-  return unit and unit * count
+  if itemID then
+    local unit = plainNumber((select(11, ask("C_Item.GetItemInfo", itemID))))
+    if unit then return unit * (plainNumber(info.stackCount) or 1) end
+  end
+  local n = plainNumber((ask("GetNumBuybackItems")))
+  if n and n > 0 then return (select(3, ask("GetBuybackItemInfo", n))) end
 end
 
 local function commodityDeposit(item, duration, quantity)
