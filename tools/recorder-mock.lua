@@ -26,6 +26,13 @@
 -- mailbox, a guild bank withdrawal), a change with no reason while the mailbox is open, a reason
 -- the server refuses that must not explain the next change, and a loot message arriving after
 -- its own change. Also a quest's levels at accept and a party member's level.
+-- And the weather (a change written once however often it is announced, a hidden one skipped),
+-- day and night, durability (in every SNAP, and a burst of its event read once five seconds on,
+-- with one BROKEN for the boots worn down, none for the legs broken since the opening, a repair,
+-- a broken belt put on or a hidden value), duels won and fled and one the game hides the message
+-- for, strangers' duels and rolls left out, the character's /roll with and without the surname,
+-- loot rolls in both clients' wordings (never written as loot), the loading screen's length, and
+-- /widsith check finding every message.
 --
 -- Run from the addon's folder:
 --   npx --yes -p fengari-node-cli fengari tools/recorder-mock.lua
@@ -235,6 +242,34 @@ function GetInventoryItemLink(_, slot)
   local id = inventory[slot]
   if id then return "|cffffffff|Hitem:" .. id .. "::::::::1:::::::|h[Worn Thing]|h|r" end
 end
+-- Durability by slot, current and maximum, as GetInventoryItemDurability(slot) answers it for
+-- the player's own gear: a belt, legs already broken as the first session opens, and boots;
+-- nothing for an empty slot. Every read is counted.
+inventory[6], inventory[7], inventory[8] = 3001, 3002, 3003
+local durability = { [6] = { 30, 40 }, [7] = { 0, 50 }, [8] = { 12, 60 } }
+local durabilityReads = 0
+function GetInventoryItemDurability(slot)
+  durabilityReads = durabilityReads + 1
+  local d = durability[slot]
+  if d == SECRET then return SECRET, SECRET end
+  if d then return d[1], d[2] end
+end
+-- The weather where the character is (WeatherScriptDocumentation.lua: a WeatherInfo of type and
+-- intensity), and whether it is day (C_DateAndTime.IsDayTime, WoW Forever's API).
+local weather = { type = 1, intensity = 0.5 }
+C_Weather = { GetCurrentWeather = function() return weather end }
+local daytime = true
+C_DateAndTime = { IsDayTime = function() return daytime end }
+-- Duels and /roll, as the English client words them; loot rolls the character makes and wins,
+-- need and greed as Retail 12.1.5 words them (a loot history link either side of the item), a
+-- pass and a win as WoW Forever 1.60.1 does (one link, before it).
+DUEL_WINNER_KNOCKOUT = "%1$s has defeated %2$s in a duel"
+DUEL_WINNER_RETREAT = "%2$s has fled from %1$s in a duel"
+RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"
+LOOT_ROLL_NEED_SELF = "|HlootHistory:%d|h[Loot]|h: You have selected Need for: %s |HlootHistory:%d|h|cnLOOT_LINK_COLOR:[View Loot Rolls]|r|h"
+LOOT_ROLL_GREED_SELF = "|HlootHistory:%d|h[Loot]|h: You have selected Greed for: %s |HlootHistory:%d|h|cnLOOT_LINK_COLOR:[View Loot Rolls]|r|h"
+LOOT_ROLL_PASSED_SELF = "|HlootHistory:%d|h[Loot]|h: You passed on: %s"
+LOOT_ROLL_YOU_WON = "|HlootHistory:%d|h[Loot]|h: You won: %s"
 -- The quest log: entries with objectives, and whether each is ready to turn in. Quest 200 is in
 -- the log from the first session, already finished; quest 100 is accepted and played in a scene.
 local questLog = { { questID = 200, title = "An Old Errand", ready = true, level = 2,
@@ -767,8 +802,97 @@ inventory[11] = 2002
 fire("PLAYER_EQUIPMENT_CHANGED", 11, false)
 advance(2)
 
+-- weather and daylight: the opening wrote rain at half strength, and day. The same weather
+-- announced again (nothing), heavier rain (one line) announced three times, weather the game
+-- hides (nothing, no ERR) and back as it was (nothing); night falls, announced twice (one line)
+fire("WEATHER_CHANGED")
+weather = { type = 1, intensity = 0.8 }
+fire("WEATHER_CHANGED")
+fire("WEATHER_CHANGED")
+fire("WEATHER_CHANGED")
+local shownWeather = weather
+weather = SECRET
+fire("WEATHER_CHANGED")
+weather = shownWeather
+fire("WEATHER_CHANGED")
+daytime = false
+fire("DIEL_CYCLE_CHANGED", false)
+fire("DIEL_CYCLE_CHANGED", false)
+advance(1)
+
+-- durability: a fight's burst of the event while the boots wear down to nothing. No read at any
+-- event, one pass five seconds after the first, one BROKEN for the boots; the legs, broken since
+-- the session opened, never write one
+local burstFromMs = (clock - firstSessionAt) * 1000
+local readsBefore = durabilityReads
+for i = 1, 20 do
+  if i == 10 then durability[8] = { 0, 60 } end
+  fire("UPDATE_INVENTORY_DURABILITY")
+  advance(0.1)
+end
+local readsInBurst = durabilityReads - readsBefore
+advance(5)
+local readsAfterBurst = durabilityReads - readsBefore
+-- a long fight, the event every half second for twelve seconds: the boots repaired, a belt put
+-- on already broken, the legs' durability hidden for a while; no BROKEN, and a pass at most
+-- every five seconds
+readsBefore = durabilityReads
+for i = 1, 24 do
+  if i == 2 then durability[8] = { 60, 60 } end
+  if i == 6 then inventory[6], durability[6] = 3004, { 0, 40 } end
+  if i == 10 then durability[7] = SECRET end
+  if i == 20 then durability[7] = { 0, 50 } end
+  fire("UPDATE_INVENTORY_DURABILITY")
+  advance(0.5)
+end
+advance(6)
+local passesInFight = (durabilityReads - readsBefore) / addonTable.EQUIP_SLOTS
+
+-- duels: the character wins one (the message, then the game's end of it), flees from another (the
+-- end, then the message half a second later), two strangers' duels and a namesake's nearby
+-- (nothing), and one under chat lockdown whose end fires twice: one line, with no names
+fire("CHAT_MSG_SYSTEM", "Aldwin Thornby has defeated Maela Dunwood in a duel")
+fire("DUEL_FINISHED")
+advance(3)
+fire("DUEL_FINISHED")
+advance(0.5)
+fire("CHAT_MSG_SYSTEM", "Aldwin Thornby has fled from Maela Dunwood in a duel")
+advance(3)
+fire("CHAT_MSG_SYSTEM", "Bertrand has defeated Someone in a duel")
+fire("CHAT_MSG_SYSTEM", "Aldwin Smith has defeated Maela Dunwood in a duel")
+fire("DUEL_FINISHED")
+fire("CHAT_MSG_SYSTEM", SECRET)
+fire("DUEL_FINISHED")
+advance(3)
+
+-- /roll: the character's own with the surname, another player's, the character's without the
+-- surname (as Retail words it), and a namesake's (only the character's two are written)
+fire("CHAT_MSG_SYSTEM", "Aldwin Thornby rolls 42 (1-100)")
+fire("CHAT_MSG_SYSTEM", "Maela Dunwood rolls 7 (1-100)")
+fire("CHAT_MSG_SYSTEM", "Aldwin rolls 3 (1-6)")
+fire("CHAT_MSG_SYSTEM", "Aldwin Smith rolls 99 (1-100)")
+
+-- loot rolls: need (sent as the character's), greed (no sender), a pass, the win and the loot
+-- that follows it, and another player's choice (nothing)
+local SWORD = "|cff1eff00|Hitem:4567::::::::5:::::::|h[Greenish Sword]|h|r"
+local CLOAK = "|cff1eff00|Hitem:4568::::::::5:::::::|h[Greenish Cloak]|h|r"
+local BOOTS = "|cff1eff00|Hitem:4569::::::::5:::::::|h[Greenish Boots]|h|r"
+local SELF = "Player-4747-0ABC1234"
+fire("CHAT_MSG_LOOT", "|HlootHistory:12|h[Loot]|h: You have selected Need for: " .. SWORD .. " |HlootHistory:12|h|cnLOOT_LINK_COLOR:[View Loot Rolls]|r|h",
+  nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, SELF)
+fire("CHAT_MSG_LOOT", "|HlootHistory:13|h[Loot]|h: You have selected Greed for: " .. CLOAK .. " |HlootHistory:13|h|cnLOOT_LINK_COLOR:[View Loot Rolls]|r|h")
+fire("CHAT_MSG_LOOT", "|HlootHistory:14|h[Loot]|h: You passed on: " .. BOOTS, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, SELF)
+fire("CHAT_MSG_LOOT", "|HlootHistory:12|h[Loot]|h: You won: " .. SWORD, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, SELF)
+fire("CHAT_MSG_LOOT", "You receive loot: " .. SWORD .. ".", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, SELF)
+fire("CHAT_MSG_LOOT", "|HlootHistory:13|h[Loot]|h: Maela has selected Need for: " .. CLOAK, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0CCCCCCC")
+advance(1)
+
+-- /widsith check: every message the recorder reads is one this client has
+SlashCmdList.WIDSITH("check")
+
 -- a loading screen across the five-minute mark: the periodic lines wait for its end
 local loadingFrom = firstSessionAt + addonTable.TIMER_PERIOD - 2.5
+local clockBeforeScreen = clock
 local loadingTo = loadingFrom + 5
 advance(loadingFrom - clock)
 fire("LOADING_SCREEN_ENABLED")
@@ -1232,9 +1356,70 @@ expect(quest ~= nil and quest[6] == "4" and quest[7] == "6",
 expect(party ~= nil and party[5] == "1:Player-4747-0CCCCCCC:Maela-Whitemane" and party[6] == "7",
   "a party member's level wasn't written beside them: " .. (party and table.concat(party, " ", 3) or "no GROUP"))
 
+-- Weather, daylight, gear wear, duels, rolls and loading screens, in the first session; then
+-- each later session's opening weather and daylight, and every SNAP's durability field.
+local byKind = {}
+local brokenAt = {}
+for _, l in ipairs(first) do
+  byKind[l.kind] = byKind[l.kind] or {}
+  table.insert(byKind[l.kind], (l.fields:gsub("\t", " ")))
+  if l.kind == "BROKEN" then brokenAt[#brokenAt + 1] = l.t - burstFromMs end
+end
+local function kindIs(kind, want)
+  local got = table.concat(byKind[kind] or {}, " / ")
+  expect(got == table.concat(want, " / "), kind .. " lines aren't " .. table.concat(want, " / ") .. ": " .. got)
+end
+kindIs("WEATHER", { "1 0.5000", "1 0.8000" })
+kindIs("DAYLIGHT", { "1", "0" })
+kindIs("BROKEN", { "8 3003" })
+expect(readsInBurst == 0, "durability was read " .. readsInBurst .. " times at the events themselves")
+expect(readsAfterBurst == addonTable.EQUIP_SLOTS, "a burst of the durability event read " .. readsAfterBurst .. " slots, not one pass")
+expect(brokenAt[1] and brokenAt[1] >= 0 and brokenAt[1] <= 5000, "the BROKEN line wasn't written within five seconds of the burst's start")
+expect(passesInFight >= 2 and passesInFight <= 3, "a twelve-second fight's durability events made " .. passesInFight .. " passes, not one each five seconds")
+kindIs("DUEL", { "knockout Aldwin Thornby Maela Dunwood", "retreat Maela Dunwood Aldwin Thornby", "finished  " })
+kindIs("ROLL", { "42 1 100", "3 1 6" })
+kindIs("LOOTROLL", { "need 4567 item:4567::::::::5:::::::", "greed 4568 item:4568::::::::5:::::::",
+  "pass 4569 item:4569::::::::5:::::::", "won 4567 item:4567::::::::5:::::::" })
+expect(lootIs("4567", "1", "", "loot", "item:4567::::::::5:::::::"), "the loot after a won roll wasn't written as LOOT")
+expect(lootByItem["4568"] == nil and lootByItem["4569"] == nil, "a roll's message was written as loot")
+kindIs("LOADSCREEN", { "5.0" })
+expect(clockBeforeScreen < loadingFrom, "the scenes ran past the loading screen's start")
+local checkSaid
+for _, line in ipairs(chat) do
+  if line:find("missing messages: ", 1, true) then checkSaid = line:match("missing messages: (.*)$") end
+end
+expect(checkSaid == "none", "/widsith check didn't say every message is there: " .. tostring(checkSaid))
+for s = 2, #WidsithDB.sessions do
+  local weatherLines, daylightLines = {}, {}
+  for _, l in ipairs(lines(WidsithDB.sessions[s])) do
+    if l.kind == "WEATHER" then weatherLines[#weatherLines + 1] = l.fields:gsub("\t", " ") end
+    if l.kind == "DAYLIGHT" then daylightLines[#daylightLines + 1] = l.fields end
+  end
+  expect(table.concat(weatherLines, " / ") == "1 0.8000" and table.concat(daylightLines, " / ") == "0",
+    "session " .. s .. " didn't open with the weather and the night: " .. table.concat(weatherLines, " / ") .. "; " .. table.concat(daylightLines, " / "))
+end
+local wantWear = {}
+for slot = 1, addonTable.EQUIP_SLOTS do wantWear[slot] = "" end
+wantWear[6], wantWear[7], wantWear[8] = "30/40", "0/50", "12/60"
+local firstWear, wearShape = nil, true
+for _, session in ipairs(WidsithDB.sessions) do
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local f = {}
+    for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+    if f[2] == "SNAP" then
+      local entries = select(2, (f[13] or ""):gsub(",", ",")) + 1
+      if entries ~= addonTable.EQUIP_SLOTS then wearShape = false end
+      firstWear = firstWear or f[13]
+    end
+  end
+end
+expect(firstWear == table.concat(wantWear, ","), "the opening SNAP's durability isn't each slot's current/max: " .. tostring(firstWear))
+expect(wearShape, "a SNAP's durability field hasn't one entry per slot")
+
 local NEW = { FIGHT = true, RECAP = true, AURA = true, CC = true, MIRROR = true, DISCOVER = true, TALLY = true, NPCSAY = true, RULES = true,
   LEVEL = true, DEATH = true, COMBAT = true, SESSION = true, END = true, ERR = true, REP = true, SPEECH = true, RECIPES = true,
-  GEARSET = true, GEARSWAP = true, TALENTS = true, EQUIP = true, SPEC = true, CURRENCY = true, EMOTE = true }
+  GEARSET = true, GEARSWAP = true, TALENTS = true, EQUIP = true, SPEC = true, CURRENCY = true, EMOTE = true,
+  WEATHER = true, DAYLIGHT = true, BROKEN = true, DUEL = true, ROLL = true, LOOTROLL = true, LOADSCREEN = true }
 local kinds = {}
 for s, session in ipairs(WidsithDB.sessions) do
   realPrint("== session " .. s .. " ==")

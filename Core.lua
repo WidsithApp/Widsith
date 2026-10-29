@@ -359,6 +359,7 @@ end
 ---------------------------------------------------------------------------
 
 local EQUIP_SLOTS = 19
+WJ.EQUIP_SLOTS = EQUIP_SLOTS
 
 -- A quest log entry the player would call a quest: not a header, and not one of the hidden
 -- tracking quests the client keeps in the log ("Level 3", "Level 13" … seen in the game),
@@ -405,15 +406,20 @@ local function equipStrings()
   return strings
 end
 
-function WJ.snapshot()
+-- opening: the session's opening snapshot, whose durability read is where
+-- watching for broken gear starts (Events.lua).
+function WJ.snapshot(opening)
   local mapID, x, y = WJ.currentPosition()
   -- The worn items' strings go with the first snapshot of a session and then
   -- only when they differ from the last written: a quiet session costs nothing.
   local strings = WJ.list(equipStrings())
   local changed = strings ~= lastEquipStrings
   lastEquipStrings = strings
+  -- Each worn slot's durability, in the same order as the items, every time.
+  local durability = WJ.durabilityList and WJ.durabilityList(opening == true) or nil
   WJ.write("SNAP", UnitLevel("player"), UnitXP("player"), UnitXPMax("player"), GetMoney(),
-    mapID, WJ.coord(x), WJ.coord(y), WJ.list(questIDs()), WJ.list(equipIDs()), changed and strings or nil)
+    mapID, WJ.coord(x), WJ.coord(y), WJ.list(questIDs()), WJ.list(equipIDs()), changed and strings or nil,
+    durability)
   WJ.write("COUNT", counts.pos, counts.kills, counts.loot, counts.xp, counts.quests, counts.deaths,
     counts.jumps, counts.shots, counts.emotes)
   -- The character sheet's numbers, when they changed (Extras.lua).
@@ -424,10 +430,11 @@ end
 
 -- The opening snapshot plus the state that has no change event of its own
 -- yet in this session: quest titles (QLABEL), professions (SKILL), reputations (REP), currencies (CURRENCY), spec,
--- talents, gear sets, hearth location, the rules played under, auras and the game's counters.
--- Written once the client has loaded that data.
+-- talents, gear sets, hearth location, the weather and the time of day, the rules played under,
+-- auras and the game's counters. Written once the client has loaded that data.
 function WJ.openingState()
-  WJ.snapshot()
+  WJ.snapshot(true)
+  if WJ.writeOpeningWorld then WJ.guard("openingWorld", WJ.writeOpeningWorld)() end
   if WJ.writeQuestLabels then WJ.writeQuestLabels() end
   -- The quest log's state as the session begins (Events.lua): the cache seeded, the quests
   -- already ready to turn in written as such.
@@ -555,6 +562,7 @@ local USED_APIS = {
   "C_Traits.GetTreeNodes", "C_Traits.GetNodeInfo", "C_Traits.GenerateImportString",
   "C_CurrencyInfo.GetCurrencyListSize", "C_CurrencyInfo.GetCurrencyListInfo",
   "C_QuestLog.GetLogIndexForQuestID", "C_QuestLog.GetQuestDifficultyLevel",
+  "C_Weather.GetCurrentWeather", "C_DateAndTime.IsDayTime", "GetInventoryItemDurability",
   -- money: the calls that move it, and what each states
   "GetNumLootItems", "GetLootSlotType", "C_Container.GetContainerItemInfo", "C_MerchantFrame.SellAllJunkItems",
   "BuybackItem", "GetBuybackItemInfo", "GetNumBuybackItems", "TakeTaxiNode", "TaxiNodeCost", "GetTrainerServiceCost",
@@ -592,8 +600,8 @@ function WJ.printClientCheck()
     if type(lookup(path)) ~= "function" then missing[#missing + 1] = path end
   end
   print(PREFIX .. "missing functions: " .. (#missing > 0 and table.concat(missing, ", ") or "none"))
-  local formats = WJ.missingLootFormatNames and WJ.missingLootFormatNames() or {}
-  print(PREFIX .. "missing loot messages: " .. (#formats > 0 and table.concat(formats, ", ") or "none"))
+  local formats = WJ.missingFormatNames and WJ.missingFormatNames() or {}
+  print(PREFIX .. "missing messages: " .. (#formats > 0 and table.concat(formats, ", ") or "none"))
   local events = WJ.unregisteredEvents or {}
   print(PREFIX .. "missing events: " .. (#events > 0 and table.concat(events, ", ") or "none"))
   if WJ.savesNotLoaded then print(PREFIX .. "the game didn't load the recording file at the last reload.") end

@@ -11,6 +11,7 @@ Each version of Widsith, newest first, with the date it was handed out. The addo
 - Quests are recorded whole: every objective is listed the moment you accept a quest, the game's own "ready to turn in" is recorded when it happens, and a quest that was already finished when you logged in is recorded as such.
 - Each change to your gold records why it happened whenever the game says, from loot and quest rewards to vendors, flights, the mailbox and the auction house, along with the window you had open. Quests also record their level when you accept them, and the members of your group are recorded with their levels.
 - Gear is recorded as the game links it, with its enchant, gems, suffix and upgrade, not only by item ID, so the site can show the piece you actually wore.
+- More of what happens around you is recorded: the weather and, on WoW Forever, the turn from day to night, how worn your gear is and the moment a piece breaks, the duels you win or lose, your own rolls and your choices in group loot rolls, and how long each loading screen took.
 
 ## 0.4.7 · 2026-10-29
 
