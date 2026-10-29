@@ -896,14 +896,14 @@ local function writeWeather(opening)
   local kind, intensity = plainNumber(info.type), plainNumber(info.intensity)
   if kind == nil and intensity == nil then return end
   local key = WJ.field(kind) .. "/" .. WJ.field(intensity)
-  if key == lastWeather and not opening then return end
+  if key == lastWeather then return end
   lastWeather = key
   write("WEATHER", kind, intensity)
 end
 
 local function writeDaylight(isDay, opening)
   if type(isDay) ~= "boolean" or secret(isDay) then return end
-  if isDay == lastDaylight and not opening then return end
+  if isDay == lastDaylight then return end
   lastDaylight = isDay
   write("DAYLIGHT", isDay)
 end
@@ -963,6 +963,14 @@ local function moneyReason(kind, said, source, opts)
   expireReasons(now)
   said, source = plainNumber(said), plainString(source)
   if opts and opts.after and said then
+    -- The same reason already waiting without its amount (a loot window's coin
+    -- before its message): the report completes it.
+    for _, r in ipairs(pending) do
+      if r.kind == kind and r.said == nil then
+        r.said, r.source = said, r.source or source
+        return
+      end
+    end
     local c = lastChange
     if c and now - c.at < MONEY_WINDOW and c.delta and math.abs(c.delta) == said and c.kind ~= kind then
       c.kind = c.kind or kind
@@ -1137,16 +1145,21 @@ moneyEvents.LOOT_OPENED = function()
   local now = GetTime()
   local stolen = now - pickPocket.at <= PICK_POCKET_WINDOW
   local moneySlot = Enum and Enum.LootSlotType and Enum.LootSlotType.Money
-  local source
+  local source, hasCoin = nil, false
   local n = plainNumber((ask("GetNumLootItems"))) or 0
   for slot = 1, n do
     if moneySlot and plainNumber((ask("GetLootSlotType", slot))) == moneySlot then
+      hasCoin = true
       source = plainString((ask("GetLootSourceInfo", slot)))
       break
     end
   end
   if stolen and not source then source = pickPocket.target end
   lootMoney = { at = now, source = source, stolen = stolen }
+  -- A coin slot in the window is the reason by itself: the change follows at
+  -- once under auto-loot, and the chat message that states the amount can
+  -- arrive a moment later. It fills the amount in when it does.
+  if hasCoin then moneyReason(stolen and "pickpocket" or "loot", nil, source) end
 end
 
 moneyEvents.CHAT_MSG_MONEY = function(text)
@@ -1419,6 +1432,8 @@ end
 -- Called at session start, once the player and quest log exist. Seeds the
 -- caches so pre-existing state never emits a change line.
 function WJ.seedState()
+  -- A session states the weather and the daylight afresh with its opening snapshot.
+  lastWeather, lastDaylight = nil, nil
   lastXP, lastXPMax, lastLevel = UnitXP("player"), UnitXPMax("player"), UnitLevel("player")
   if InCombatLockdown() then write("COMBAT", "enter") end
   if WJ.seedMoments then WJ.seedMoments() end

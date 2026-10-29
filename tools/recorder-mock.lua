@@ -923,6 +923,7 @@ local function closeWindow(name)
   npcGUID = nil
 end
 local CORPSE = "Creature-0-4621-0-46196-299-0000C0FFEE"
+local CORPSE2 = "Creature-0-4621-0-46196-299-0000C0FFEF"
 local VENDOR = "Creature-0-4621-0-46196-1250-00004AAAAA"
 local FLIGHT = "Creature-0-4621-0-46196-352-00004BBBBB"
 local TRAINER = "Creature-0-4621-0-46196-914-00004CCCCC"
@@ -935,6 +936,14 @@ advance(6)
 -- a share of someone else's loot, with no loot window of the player's own
 fire("CHAT_MSG_MONEY", "Your share of the loot is 45 Copper.")
 change(45)
+advance(1)
+-- a corpse's coin whose chat message arrives after the change has been written (as the game
+-- does under auto-loot): the window's coin slot is the reason, the message adds nothing late
+lootSlots = { { type = 2, guid = CORPSE2 } }
+fire("LOOT_OPENED")
+change(33)
+advance(0.3)
+fire("CHAT_MSG_MONEY", "You loot 33 Copper")
 advance(1)
 -- a vendor: two of a stack of five bought, three cloth sold, everything repaired
 merchantOpen = true
@@ -1326,6 +1335,7 @@ local expectedMoney = {
   { "a quest's reward", 1200, "quest", "", "1200", "" },
   { "a corpse's coin", 120, "loot", "", "120", CORPSE },
   { "a share", 45, "share", "", "45", "" },
+  { "a corpse's coin whose message came late", 33, "loot", "", "", CORPSE2 },
   { "a vendor's purchase", -100, "buy", "merchant", "100", VENDOR },
   { "a sale to a vendor", 30, "sell", "merchant", "30", VENDOR },
   { "a repair", -340, "repair", "merchant", "340", VENDOR },
