@@ -20,6 +20,19 @@
 -- must wait for the screen's end; and a quest disguise ending with one
 -- PLAYER_EQUIPMENT_CHANGED read while the head slot was empty, which the re-read a second
 -- later must put right.
+-- And money: every change with the reason the game gave before it (a corpse's coin through the
+-- loot window and its chat message, a share, a vendor's purchase, sale and repair, a discounted
+-- flight, a trainer, a letter sent with money and postage, an auction's proceeds taken from the
+-- mailbox, a guild bank withdrawal), a change with no reason while the mailbox is open, a reason
+-- the server refuses that must not explain the next change, and a loot message arriving after
+-- its own change. Also a quest's levels at accept and a party member's level.
+-- And the weather (a change written once however often it is announced, a hidden one skipped),
+-- day and night, durability (in every SNAP, and a burst of its event read once five seconds on,
+-- with one BROKEN for the boots worn down, none for the legs broken since the opening, a repair,
+-- a broken belt put on or a hidden value), duels won and fled and one the game hides the message
+-- for, strangers' duels and rolls left out, the character's /roll with and without the surname,
+-- loot rolls in both clients' wordings (never written as loot), the loading screen's length, and
+-- /widsith check finding every message.
 --
 -- Run from the addon's folder:
 --   npx --yes -p fengari-node-cli fengari tools/recorder-mock.lua
@@ -140,6 +153,42 @@ function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 local profileMs = 0
 function debugprofilestop() return profileMs end
 function GetServerTime() return 1790766000 + math.floor(clock) end
+-- Another player's name from their GUID, as the game knows it; nothing for one it hasn't met.
+function GetPlayerInfoByGUID(guid)
+  if guid == "Player-4747-0BBBBBBB" then return "Paladin", "PALADIN", "Human", "Human", 2, "Someone", "" end
+end
+-- The character sheet: the attribute calls are SecretWhenUnitStatsRestricted and answer secrets
+-- in combat; the item level is readable throughout, so a line read in a fight is part hidden.
+function UnitStat(_, i) if inCombat then return SECRET, SECRET, SECRET, SECRET end return 10 + i, 12 + i, 2, 0 end
+function UnitArmor() if inCombat then return SECRET, SECRET end return 50, 55 end
+function UnitHealthMax() if inCombat then return SECRET end return 136 end
+function GetAverageItemLevel() return 20, 18.5 end
+-- The loot messages, worded as the English client words them, and a loot window of one slot.
+LOOT_ITEM_SELF = "You receive loot: %s."
+LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d."
+LOOT_ITEM_PUSHED_SELF = "You receive item: %s."
+LOOT_ITEM_PUSHED_SELF_MULTIPLE = "You receive item: %sx%d."
+LOOT_ITEM_CREATED_SELF = "You create: %s."
+LOOT_ITEM_CREATED_SELF_MULTIPLE = "You create: %sx%d."
+LOOT_ITEM_BONUS_ROLL_SELF = "You receive bonus loot: %s."
+LOOT_ITEM_BONUS_ROLL_SELF_MULTIPLE = "You receive bonus loot: %sx%d."
+LOOT_ITEM_REFUND = "You are refunded: %s."
+LOOT_ITEM_REFUND_MULTIPLE = "You are refunded: %sx%d."
+local lootSlots = {}
+function GetNumLootItems() return #lootSlots end
+function GetLootSlotLink(slot) return lootSlots[slot] and lootSlots[slot].link end
+function GetLootSourceInfo(slot) return lootSlots[slot] and lootSlots[slot].guid end
+-- 1 is an item; a coin slot says 2 (Enum.LootSlotType.Money).
+function GetLootSlotType(slot) return lootSlots[slot] and (lootSlots[slot].type or 1) end
+-- The money messages and coins, as the English client words them.
+YOU_LOOT_MONEY = "You loot %s"
+YOU_LOOT_MONEY_GUILD = "You loot %s (%s deposited to guild bank)"
+LOOT_MONEY_SPLIT = "Your share of the loot is %s."
+LOOT_MONEY_SPLIT_GUILD = "Your share of the loot is %s. (%s deposited to guild bank)"
+LOOT_MONEY_REFUND = "You are refunded %s."
+GOLD_AMOUNT = "%d Gold"
+SILVER_AMOUNT = "%d Silver"
+COPPER_AMOUNT = "%d Copper"
 function GetBuildInfo() return "1.60.1", "70658", "Oct 27 2026", 16001 end
 function GetLocale() return "enUS" end
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
@@ -147,6 +196,7 @@ C_AddOns = { GetAddOnMetadata = function() return "0.2.23" end }
 SlashCmdList = {}
 -- Post-hooks on functions a stub here defines; anything else is left alone.
 function hooksecurefunc(owner, name, fn)
+  if type(owner) == "string" then owner, name, fn = _G, owner, name end
   if type(owner) ~= "table" or type(rawget(owner, name)) ~= "function" then return end
   local original = owner[name]
   owner[name] = function(...) original(...) fn(...) end
@@ -155,19 +205,30 @@ end
 WorldMapFrame = { shown = false, IsShown = function(self) return self.shown end }
 C_ChatInfo = { PerformEmote = function() end }
 function InCombatLockdown() return inCombat end
-function UnitGUID(unit) if unit == "player" then return "Player-4747-0ABC1234" end end
+-- The NPC a window is open at, and a party member.
+local npcGUID
+local grouped = false
+function UnitGUID(unit)
+  if unit == "player" then return "Player-4747-0ABC1234" end
+  if unit == "npc" then return npcGUID end
+  if unit == "party1" and grouped then return "Player-4747-0CCCCCCC" end
+end
 function UnitName() return "Aldwin", "Thornby" end
 function GetRealmName() return "Whitemane" end
 function GetNormalizedRealmName() return "Whitemane" end
 function UnitClass() return "Warrior", "WARRIOR", 1 end
 function UnitRace() return "Human", "Human", 1 end
-function UnitLevel() return 5 end
+function UnitLevel(unit) if unit == "party1" then return 7 end return 5 end
 function UnitXP() return 100 end
 function UnitXPMax() return 2800 end
-function GetMoney() return 334 end
+local money = 334
+function GetMoney() return money end
 function GetInstanceInfo() return "Eastern Kingdoms", "none", 0, "", 0, 0, false, 0 end
 function IsResting() return false end
-function IsInGroup() return false end
+function IsInGroup() return grouped end
+function GetNumGroupMembers() return grouped and 2 or 0 end
+function UnitIsUnit(a, b) return a == b end
+function UnitFullName(unit) if unit == "party1" and grouped then return "Maela", nil end end
 function UnitIsGhost() return false end
 function UnitIsFeignDeath() return false end
 -- Away: hidden while afkHidden, as UnitIsAFK is under the game's chat lockdown.
@@ -176,13 +237,92 @@ function UnitIsAFK() if afkHidden then return SECRET end return false end
 -- The character's gear by slot; an empty slot answers nil.
 local inventory = {}
 function GetInventoryItemID(_, slot) return inventory[slot] end
-C_QuestLog = setmetatable({ GetNumQuestLogEntries = function() return 0 end }, { __index = function() return nothing end })
+-- The worn item's link, as the game gives it, with an item string of its own.
+function GetInventoryItemLink(_, slot)
+  local id = inventory[slot]
+  if id then return "|cffffffff|Hitem:" .. id .. "::::::::1:::::::|h[Worn Thing]|h|r" end
+end
+-- Durability by slot, current and maximum, as GetInventoryItemDurability(slot) answers it for
+-- the player's own gear: a belt, legs already broken as the first session opens, and boots;
+-- nothing for an empty slot. Every read is counted.
+inventory[6], inventory[7], inventory[8] = 3001, 3002, 3003
+local durability = { [6] = { 30, 40 }, [7] = { 0, 50 }, [8] = { 12, 60 } }
+local durabilityReads = 0
+function GetInventoryItemDurability(slot)
+  durabilityReads = durabilityReads + 1
+  local d = durability[slot]
+  if d == SECRET then return SECRET, SECRET end
+  if d then return d[1], d[2] end
+end
+-- The weather where the character is (WeatherScriptDocumentation.lua: a WeatherInfo of type and
+-- intensity), and whether it is day (C_DateAndTime.IsDayTime, WoW Forever's API).
+local weather = { type = 1, intensity = 0.5 }
+C_Weather = { GetCurrentWeather = function() return weather end }
+local daytime = true
+C_DateAndTime = { IsDayTime = function() return daytime end }
+-- Duels and /roll, as the English client words them; loot rolls the character makes and wins,
+-- need and greed as Retail 12.1.5 words them (a loot history link either side of the item), a
+-- pass and a win as WoW Forever 1.60.1 does (one link, before it).
+DUEL_WINNER_KNOCKOUT = "%1$s has defeated %2$s in a duel"
+DUEL_WINNER_RETREAT = "%2$s has fled from %1$s in a duel"
+RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"
+LOOT_ROLL_NEED_SELF = "|HlootHistory:%d|h[Loot]|h: You have selected Need for: %s |HlootHistory:%d|h|cnLOOT_LINK_COLOR:[View Loot Rolls]|r|h"
+LOOT_ROLL_GREED_SELF = "|HlootHistory:%d|h[Loot]|h: You have selected Greed for: %s |HlootHistory:%d|h|cnLOOT_LINK_COLOR:[View Loot Rolls]|r|h"
+LOOT_ROLL_PASSED_SELF = "|HlootHistory:%d|h[Loot]|h: You passed on: %s"
+LOOT_ROLL_YOU_WON = "|HlootHistory:%d|h[Loot]|h: You won: %s"
+-- The quest log: entries with objectives, and whether each is ready to turn in. Quest 200 is in
+-- the log from the first session, already finished; quest 100 is accepted and played in a scene.
+local questLog = { { questID = 200, title = "An Old Errand", ready = true, level = 2,
+  objectives = { { numFulfilled = 1, numRequired = 1, type = "item", text = "Old Letter" } } } }
+local function questByID(id) for _, q in ipairs(questLog) do if q.questID == id then return q end end end
+C_QuestLog = setmetatable({
+  GetNumQuestLogEntries = function() return #questLog end,
+  GetInfo = function(i) local q = questLog[i] return q and { questID = q.questID, title = q.title, level = q.level, isHeader = false, isHidden = false } end,
+  GetLogIndexForQuestID = function(id) for i, q in ipairs(questLog) do if q.questID == id then return i end end end,
+  GetQuestDifficultyLevel = function(id) local q = questByID(id) return q and q.difficulty end,
+  GetQuestObjectives = function(id) local q = questByID(id) return q and q.objectives end,
+  GetTitleForQuestID = function(id) local q = questByID(id) return q and q.title end,
+  ReadyForTurnIn = function(id) local q = questByID(id) return q ~= nil and q.ready == true end,
+}, { __index = function() return nothing end })
 C_Map = setmetatable({ GetBestMapForUnit = function() return nil end }, { __index = function() return nothing end })
 ERR_ZONE_EXPLORED = "Discovered: %s"
 ERR_ZONE_EXPLORED_XP = "Discovered %s: %d experience gained"
 ERR_TRADE_COMPLETE = "Trade complete."
 
-Enum = { DamageMeterType = { DamageDone = 0, DamageTaken = 7, HealingDone = 2, EnemyDamageTaken = 10 } }
+Enum = { DamageMeterType = { DamageDone = 0, DamageTaken = 7, HealingDone = 2, EnemyDamageTaken = 10 },
+  LootSlotType = { None = 0, Item = 1, Money = 2, Currency = 3 },
+  PlayerInteractionType = { None = 0, TradePartner = 1, Item = 2, Gossip = 3, QuestGiver = 4, Merchant = 5, TaxiNode = 6,
+    Trainer = 7, Banker = 8, GuildBanker = 10, Registrar = 11, MailInfo = 17, Auctioneer = 21 } }
+
+-- The windows that move money: a merchant (a stack of five listed at 250 copper, cloth in the
+-- bags that sells at 10 each, a repair bill of 340), flight paths listed at 500 and 600, a
+-- trainer's service at 500, the mailbox (money to attach, postage of 30, the inbox), and the
+-- guild bank. Each function the default UI calls to move money is defined, so it can be hooked.
+local merchantOpen, sendMoney, inbox = false, 0, {}
+MerchantFrame = { IsShown = function() return merchantOpen end }
+C_MerchantFrame = { GetItemInfo = function() return { price = 250, stackCount = 5 } end, SellAllJunkItems = function() end }
+C_Container = setmetatable({ UseContainerItem = function() end,
+  GetContainerItemInfo = function() return { itemID = 2589, stackCount = 3 } end }, { __index = function() return nothing end })
+C_Item = setmetatable({ GetItemInfo = function() return "Linen Cloth", nil, 1, 5, 0, "Trade Goods", "Cloth", 200, "", 0, 10 end },
+  { __index = function() return nothing end })
+function BuyMerchantItem() end
+function RepairAllItems() end
+function GetRepairAllCost() if merchantOpen then return 340, true end return 0, false end
+function TakeTaxiNode() end
+function TaxiNodeCost(i) return ({ [3] = 500, [4] = 600 })[i] end
+function BuyTrainerService() end
+function GetTrainerServiceCost() return 500, 0, 0 end
+function SendMail() end
+function GetSendMailMoney() return sendMoney end
+function GetSendMailPrice() return 30 end
+function GetInboxNumItems() return #inbox end
+function GetInboxHeaderInfo(i)
+  local l = inbox[i]
+  if l then return nil, nil, l.sender, l.subject, l.money, l.cod, 30, false, true, false, false, false, false end
+end
+function GetInboxInvoiceInfo(i) return inbox[i] and inbox[i].invoice end
+function TakeInboxMoney() end
+function WithdrawGuildBankMoney() end
 local fights = { { sessionID = 88, name = "Kobold Vermin", durationSeconds = 7 } }
 -- A fight the meter isn't whole for at the instant combat ends, until the clock passes `at`:
 -- "missing" leaves this character's entry out (as the game once did), "secret" still hides
@@ -232,7 +372,9 @@ C_DeathRecap = {
     return {
       { event = "SPELL_DAMAGE", spellId = 20793, spellName = "Fireball", school = 4, amount = 31, overkill = 4, currentHP = 27,
         timestamp = at, sourceGUID = "Creature-0-4621-0-46196-476-0000BCECFD", sourceName = "Kobold Geomancer Jaconelli" },
-      { event = "SWING_DAMAGE", school = 1, amount = 8, overkill = -1, currentHP = 35, timestamp = at - 6.9,
+      { event = "SPELL_DAMAGE", spellId = 172, spellName = "Corruption", school = 32, amount = 9, overkill = -1, currentHP = 36,
+        timestamp = at - 3.1, sourceGUID = "Player-4747-0BBBBBBB", sourceName = "Someone" },
+      { event = "SWING_DAMAGE", school = 1, amount = 8, overkill = -1, currentHP = 44, timestamp = at - 6.9,
         sourceGUID = "Creature-0-4621-0-46196-476-0000BCECFD" },
       SECRET,
       { event = "ENVIRONMENTAL_DAMAGE", environmentalType = "FALLING", amount = 12, overkill = -1, currentHP = 47, timestamp = at - 30 },
@@ -416,6 +558,29 @@ stat[347] = "2"
 fire("CRITERIA_UPDATE")
 fire("UNIT_AURA", "player", { removedAuraInstanceIDs = { 115, 999 } })
 fire("UNIT_AURA", "player", { addedAuras = { { name = "Blessing of Might", spellId = 19740, isHelpful = true, duration = 3600, applications = 0, auraInstanceID = 133 } } })
+-- a buff from a player the game can't name (GetPlayerInfoByGUID answers nothing for them)
+fire("UNIT_AURA", "player", { addedAuras = { { name = "Arcane Intellect", spellId = 1459, isHelpful = true, duration = 1800, applications = 0, auraInstanceID = 134 } } })
+-- a quest accepted with two objectives, one advanced, both met (ready to turn in), handed in
+questLog[#questLog + 1] = { questID = 100, title = "Boars and a Key", ready = false, level = 4, difficulty = 6, objectives = {
+  { numFulfilled = 0, numRequired = 8, type = "monster", text = "Boar slain" },
+  { numFulfilled = 0, numRequired = 1, type = "item", text = "Rusty Key" } } }
+fire("QUEST_ACCEPTED", 100)
+advance(2)
+questLog[2].objectives[1].numFulfilled = 3
+fire("UNIT_QUEST_LOG_CHANGED", "player")
+advance(1)
+questLog[2].objectives[1].numFulfilled = 8
+questLog[2].objectives[2].numFulfilled = 1
+questLog[2].ready = true
+fire("UNIT_QUEST_LOG_CHANGED", "player")
+advance(1)
+fire("QUEST_TURNED_IN", 100, 250, 1200)
+money = money + 1200
+fire("PLAYER_MONEY")
+table.remove(questLog, 2)
+fire("QUEST_REMOVED", 100)
+fire("UNIT_QUEST_LOG_CHANGED", "player")
+advance(1)
 fire("MIRROR_TIMER_START", "BREATH", 60000, 60000, -1, 0, "Breath")
 advance(4)
 fire("CHAT_MSG_SYSTEM", "Discovered Crystal Lake: 65 experience gained")
@@ -521,6 +686,8 @@ fire("UNIT_AURA", "player", { addedAuras = { { name = SECRET, spellId = SECRET, 
 fire("UNIT_AURA", "player", { isFullUpdate = true })
 fire("LOSS_OF_CONTROL_ADDED", "player", 1)
 fire("LOSS_OF_CONTROL_ADDED", "targettarget", 1)
+-- a piece of gear changed in the fight: the sheet it asks for is hidden until the fight ends
+fire("PLAYER_EQUIPMENT_CHANGED", 10, false)
 advance(10)
 -- the fight leaves a poison on the character, never announced
 present.HARMFUL[1] = { name = "Poison", spellId = 11918, isHelpful = false, sourceUnit = "target", duration = 15, applications = 0, auraInstanceID = 140 }
@@ -532,6 +699,19 @@ fire("PLAYER_REGEN_ENABLED")
 stat[107] = "86"
 stat[1336] = "50 (Humanoid)"
 advance(3)
+-- the kobold's corpse looted (three cloth, through the loot window), then items the game pushed
+-- without one, a craft, a refund, a wording no format explains, another player's loot, and an
+-- upgraded item whose link carries bonus IDs
+lootSlots = { { link = "|cff9d9d9d|Hitem:2589::::::::1:::::::|h[Linen Cloth]|h|r", guid = "Creature-0-4621-0-46196-476-0000BCECFD" } }
+fire("LOOT_OPENED")
+fire("CHAT_MSG_LOOT", "You receive loot: |cff9d9d9d|Hitem:2589::::::::1:::::::|h[Linen Cloth]|h|rx3.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+fire("CHAT_MSG_LOOT", "You receive item: |cffffffff|Hitem:6948::::::::1:::::::|h[Hearthstone]|h|r.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+fire("CHAT_MSG_LOOT", "You create: |cffffffff|Hitem:2581::::::::1:::::::|h[Heavy Linen Bandage]|h|rx2.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+fire("CHAT_MSG_LOOT", "You are refunded: |cffffffff|Hitem:1234::::::::1:::::::|h[Returned Thing]|h|r.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+fire("CHAT_MSG_LOOT", "You find: |cffffffff|Hitem:999::::::::1:::::::|h[Odd Thing]|h|r.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+fire("CHAT_MSG_LOOT", "Someone receives loot: |cffffffff|Hitem:4321::::::::1:::::::|h[Their Thing]|h|r.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0BBBBBBB")
+fire("CHAT_MSG_LOOT", "You receive item: |cffa335ee|Hitem:268213::::::::80:577::6:5:6652:10353:10254:1527:10255::::::|h[Upgraded Blade]|h|r.", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0ABC1234")
+advance(1)
 -- the poison runs out; then the game resends the whole set with new instance numbers
 present.HARMFUL[1] = nil
 fire("UNIT_AURA", "player", { removedAuraInstanceIDs = { 140 } })
@@ -622,8 +802,97 @@ inventory[11] = 2002
 fire("PLAYER_EQUIPMENT_CHANGED", 11, false)
 advance(2)
 
+-- weather and daylight: the opening wrote rain at half strength, and day. The same weather
+-- announced again (nothing), heavier rain (one line) announced three times, weather the game
+-- hides (nothing, no ERR) and back as it was (nothing); night falls, announced twice (one line)
+fire("WEATHER_CHANGED")
+weather = { type = 1, intensity = 0.8 }
+fire("WEATHER_CHANGED")
+fire("WEATHER_CHANGED")
+fire("WEATHER_CHANGED")
+local shownWeather = weather
+weather = SECRET
+fire("WEATHER_CHANGED")
+weather = shownWeather
+fire("WEATHER_CHANGED")
+daytime = false
+fire("DIEL_CYCLE_CHANGED", false)
+fire("DIEL_CYCLE_CHANGED", false)
+advance(1)
+
+-- durability: a fight's burst of the event while the boots wear down to nothing. No read at any
+-- event, one pass five seconds after the first, one BROKEN for the boots; the legs, broken since
+-- the session opened, never write one
+local burstFromMs = (clock - firstSessionAt) * 1000
+local readsBefore = durabilityReads
+for i = 1, 20 do
+  if i == 10 then durability[8] = { 0, 60 } end
+  fire("UPDATE_INVENTORY_DURABILITY")
+  advance(0.1)
+end
+local readsInBurst = durabilityReads - readsBefore
+advance(5)
+local readsAfterBurst = durabilityReads - readsBefore
+-- a long fight, the event every half second for twelve seconds: the boots repaired, a belt put
+-- on already broken, the legs' durability hidden for a while; no BROKEN, and a pass at most
+-- every five seconds
+readsBefore = durabilityReads
+for i = 1, 24 do
+  if i == 2 then durability[8] = { 60, 60 } end
+  if i == 6 then inventory[6], durability[6] = 3004, { 0, 40 } end
+  if i == 10 then durability[7] = SECRET end
+  if i == 20 then durability[7] = { 0, 50 } end
+  fire("UPDATE_INVENTORY_DURABILITY")
+  advance(0.5)
+end
+advance(6)
+local passesInFight = (durabilityReads - readsBefore) / addonTable.EQUIP_SLOTS
+
+-- duels: the character wins one (the message, then the game's end of it), flees from another (the
+-- end, then the message half a second later), two strangers' duels and a namesake's nearby
+-- (nothing), and one under chat lockdown whose end fires twice: one line, with no names
+fire("CHAT_MSG_SYSTEM", "Aldwin Thornby has defeated Maela Dunwood in a duel")
+fire("DUEL_FINISHED")
+advance(3)
+fire("DUEL_FINISHED")
+advance(0.5)
+fire("CHAT_MSG_SYSTEM", "Aldwin Thornby has fled from Maela Dunwood in a duel")
+advance(3)
+fire("CHAT_MSG_SYSTEM", "Bertrand has defeated Someone in a duel")
+fire("CHAT_MSG_SYSTEM", "Aldwin Smith has defeated Maela Dunwood in a duel")
+fire("DUEL_FINISHED")
+fire("CHAT_MSG_SYSTEM", SECRET)
+fire("DUEL_FINISHED")
+advance(3)
+
+-- /roll: the character's own with the surname, another player's, the character's without the
+-- surname (as Retail words it), and a namesake's (only the character's two are written)
+fire("CHAT_MSG_SYSTEM", "Aldwin Thornby rolls 42 (1-100)")
+fire("CHAT_MSG_SYSTEM", "Maela Dunwood rolls 7 (1-100)")
+fire("CHAT_MSG_SYSTEM", "Aldwin rolls 3 (1-6)")
+fire("CHAT_MSG_SYSTEM", "Aldwin Smith rolls 99 (1-100)")
+
+-- loot rolls: need (sent as the character's), greed (no sender), a pass, the win and the loot
+-- that follows it, and another player's choice (nothing)
+local SWORD = "|cff1eff00|Hitem:4567::::::::5:::::::|h[Greenish Sword]|h|r"
+local CLOAK = "|cff1eff00|Hitem:4568::::::::5:::::::|h[Greenish Cloak]|h|r"
+local BOOTS = "|cff1eff00|Hitem:4569::::::::5:::::::|h[Greenish Boots]|h|r"
+local SELF = "Player-4747-0ABC1234"
+fire("CHAT_MSG_LOOT", "|HlootHistory:12|h[Loot]|h: You have selected Need for: " .. SWORD .. " |HlootHistory:12|h|cnLOOT_LINK_COLOR:[View Loot Rolls]|r|h",
+  nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, SELF)
+fire("CHAT_MSG_LOOT", "|HlootHistory:13|h[Loot]|h: You have selected Greed for: " .. CLOAK .. " |HlootHistory:13|h|cnLOOT_LINK_COLOR:[View Loot Rolls]|r|h")
+fire("CHAT_MSG_LOOT", "|HlootHistory:14|h[Loot]|h: You passed on: " .. BOOTS, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, SELF)
+fire("CHAT_MSG_LOOT", "|HlootHistory:12|h[Loot]|h: You won: " .. SWORD, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, SELF)
+fire("CHAT_MSG_LOOT", "You receive loot: " .. SWORD .. ".", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, SELF)
+fire("CHAT_MSG_LOOT", "|HlootHistory:13|h[Loot]|h: Maela has selected Need for: " .. CLOAK, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "Player-4747-0CCCCCCC")
+advance(1)
+
+-- /widsith check: every message the recorder reads is one this client has
+SlashCmdList.WIDSITH("check")
+
 -- a loading screen across the five-minute mark: the periodic lines wait for its end
 local loadingFrom = firstSessionAt + addonTable.TIMER_PERIOD - 2.5
+local clockBeforeScreen = clock
 local loadingTo = loadingFrom + 5
 advance(loadingFrom - clock)
 fire("LOADING_SCREEN_ENABLED")
@@ -631,6 +900,122 @@ advance(loadingTo - clock)
 fire("PLAYER_ENTERING_WORLD", false, false)
 fire("LOADING_SCREEN_DISABLED")
 advance(3)
+
+-- a party of two forms and breaks up: the member's level beside the member
+grouped = true
+fire("GROUP_ROSTER_UPDATE")
+grouped = false
+fire("GROUP_LEFT")
+
+-- Money: each change is GetMoney() moving and PLAYER_MONEY firing.
+local moneyChanges = 1   -- the quest's reward, above
+local function change(copper)
+  money = money + copper
+  moneyChanges = moneyChanges + 1
+  fire("PLAYER_MONEY")
+end
+local function openWindow(name, guid)
+  npcGUID = guid
+  fire("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", Enum.PlayerInteractionType[name])
+end
+local function closeWindow(name)
+  fire("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", Enum.PlayerInteractionType[name])
+  npcGUID = nil
+end
+local CORPSE = "Creature-0-4621-0-46196-299-0000C0FFEE"
+local CORPSE2 = "Creature-0-4621-0-46196-299-0000C0FFEF"
+local VENDOR = "Creature-0-4621-0-46196-1250-00004AAAAA"
+local FLIGHT = "Creature-0-4621-0-46196-352-00004BBBBB"
+local TRAINER = "Creature-0-4621-0-46196-914-00004CCCCC"
+-- a corpse's coin: the loot window lists it, the chat message states it
+lootSlots = { { type = 2, guid = CORPSE } }
+fire("LOOT_OPENED")
+fire("CHAT_MSG_MONEY", "You loot 1 Silver, 20 Copper")
+change(120)
+advance(6)
+-- a share of someone else's loot, with no loot window of the player's own
+fire("CHAT_MSG_MONEY", "Your share of the loot is 45 Copper.")
+change(45)
+advance(1)
+-- a corpse's coin whose chat message arrives after the change has been written (as the game
+-- does under auto-loot): the window's coin slot is the reason, the message adds nothing late
+lootSlots = { { type = 2, guid = CORPSE2 } }
+fire("LOOT_OPENED")
+change(33)
+advance(0.3)
+fire("CHAT_MSG_MONEY", "You loot 33 Copper")
+advance(1)
+-- a vendor: two of a stack of five bought, three cloth sold, everything repaired
+merchantOpen = true
+openWindow("Merchant", VENDOR)
+fire("MERCHANT_SHOW")
+BuyMerchantItem(1, 2)
+change(-100)
+advance(0.5)
+C_Container.UseContainerItem(0, 1)
+change(30)
+advance(0.5)
+RepairAllItems(false)
+change(-340)
+advance(0.5)
+merchantOpen = false
+closeWindow("Merchant")
+fire("MERCHANT_CLOSED")
+-- a flight listed at 500 that costs 450 with the faction discount
+openWindow("TaxiNode", FLIGHT)
+TakeTaxiNode(3)
+change(-450)
+closeWindow("TaxiNode")
+advance(1)
+-- a trainer
+openWindow("Trainer", TRAINER)
+BuyTrainerService(2)
+change(-500)
+closeWindow("Trainer")
+advance(1)
+-- the mailbox: a letter sent with 2 silver and the postage, then an auction's proceeds taken
+openWindow("MailInfo", nil)
+sendMoney = 200
+SendMail("Bertrand", "For the road", "")
+change(-200)
+change(-30)
+sendMoney = 0
+advance(1)
+inbox = { { sender = "Stormwind Auction House", subject = "Auction successful: Linen Cloth", money = 7600, cod = 0, invoice = "seller" } }
+fire("MAIL_INBOX_UPDATE")
+TakeInboxMoney(1)
+change(7600)
+advance(2.5)
+-- money that moves with the mailbox open and nothing said why
+change(15)
+closeWindow("MailInfo")
+advance(1)
+-- a guild bank withdrawal
+openWindow("GuildBanker", nil)
+WithdrawGuildBankMoney(20000)
+change(20000)
+closeWindow("GuildBanker")
+advance(1)
+-- a flight the server refuses: no change follows, and the next change, over two seconds later,
+-- isn't explained by it
+openWindow("TaxiNode", FLIGHT)
+TakeTaxiNode(4)
+closeWindow("TaxiNode")
+advance(2.2)
+change(7)
+-- a loot message arriving after its own change, in the same frame: it still explains that
+-- change, and nothing that follows
+change(65)
+fire("CHAT_MSG_MONEY", "You loot 65 Copper")
+advance(1)
+change(3)
+advance(1)
+-- two changes in one frame, the message for the second arriving after both: the amount tells
+-- them apart
+change(9)
+change(80)
+fire("CHAT_MSG_MONEY", "You loot 80 Copper")
+advance(1)
 
 -- pause and resume: a fresh baseline
 SlashCmdList.WIDSITH("pause")
@@ -697,6 +1082,8 @@ expect(has(afterLeave, "AURA has 6673") and has(afterLeave, "AURA has 20217"),
   "the auras weren't read a second after the fight that the session opened in")
 expect(refusedInEncounter > 0, "the stand-in never refused a read, so the guard went untested")
 expect(has(afterLeave, "AURA gain 139"), "an announced aura went unwritten when its caster couldn't be read")
+expect(not has(beforeLeave, "STATS") and has(afterLeave, "STATS"),
+  "the sheet of a session that opened in a fight should be written after the fight, not hidden inside it")
 expect(not seen.ERR, "a refused aura read was written as ERR")
 local framesWithReads = 0
 for _ in pairs(statFrames) do framesWithReads = framesWithReads + 1 end
@@ -767,7 +1154,7 @@ for _, l in ipairs(first) do
     if f[7] == "" then afkHiddenSeen = true elseif afkHiddenSeen and f[7] == "0" then afkBack = true end
   end
   if l.kind == "EQUIP" then
-    local slot, item = l.fields:match("^(%d+)\t?(.*)$")
+    local slot, item = l.fields:match("^(%d+)\t?([^\t]*)")
     equipLines[slot] = equipLines[slot] or {}
     table.insert(equipLines[slot], { t = l.t, item = item })
   end
@@ -798,9 +1185,251 @@ expect(not refusedKinds.AURA and not refusedKinds.ERR, "an opening aura read ref
 expect(refusedKinds.RULES and refusedKinds.TALLY and refusedKinds.CURRENCY,
   "the opening lost its other lines when the aura read was refused")
 
+-- Other players are named: a recap's hit from a player carries their GUID in full and the
+-- recap's name for them, an aura they cast carries their GUID and the name the game gives, and
+-- a caster the game can't name has the GUID alone. The word Player is never written.
+local recapNamed, blessingNamed, intellectUnnamed, wordPlayer = false, false, false, false
+for _, session in ipairs(WidsithDB.sessions) do
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local f = {}
+    for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+    if f[2] == "RECAP" and f[13] == "Player-4747-0BBBBBBB" and f[16] == "Someone" then recapNamed = true end
+    if f[2] == "AURA" and f[4] == "19740" and f[10] == "Player-4747-0BBBBBBB" and f[11] == "Someone" then blessingNamed = true end
+    if f[2] == "AURA" and f[4] == "1459" and f[10] == "Player-4747-0ABC1234" and (f[11] or "") == "" then intellectUnnamed = true end
+    if (f[2] == "AURA" and f[10] == "Player") or (f[2] == "RECAP" and f[13] == "Player") then wordPlayer = true end
+  end
+end
+-- The sheet is never written while the game hides part of it: no STATS inside a fight in any
+-- session, and the one a gear change asked for in a fight follows that fight within a second.
+local statsInFight, statsOwedWritten, statsLines = false, false, 0
+for _, session in ipairs(WidsithDB.sessions) do
+  local fighting, leftAt = false, nil
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local t, kind, rest = line:match("^(%d+)\t([^\t]+)\t?(.*)$")
+    if kind == "COMBAT" then
+      fighting = rest == "enter"
+      if not fighting then leftAt = tonumber(t) end
+    elseif kind == "STATS" then
+      statsLines = statsLines + 1
+      if fighting then statsInFight = true end
+      if leftAt and tonumber(t) - leftAt <= 1500 then statsOwedWritten = true end
+    end
+  end
+end
+expect(statsLines > 0, "no STATS line was written at all")
+expect(not statsInFight, "a STATS line was written while the game hid the sheet")
+expect(statsOwedWritten, "the sheet a fight hid wasn't written in the second after it")
+-- A session's opening line says how big the file was before it: a number, never smaller than
+-- the one before.
+local sizeFields, sizesInOrder = 0, true
+for i, session in ipairs(WidsithDB.sessions) do
+  local first = (table.concat(session.chunks, "\n") .. "\n"):match("([^\n]*)\n")
+  local f = {}
+  for v in (first .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+  local bytes = f[2] == "SESSION" and tonumber(f[14]) or nil
+  if bytes then
+    sizeFields = sizeFields + 1
+    if sizeFields > 1 and bytes < (WidsithDB.sessions[i - 1].sizeSeen or 0) then sizesInOrder = false end
+    session.sizeSeen = bytes
+  end
+end
+expect(sizeFields == #WidsithDB.sessions and sizesInOrder, "a SESSION line doesn't say what the file held before it, or the sizes don't grow")
+-- Loot lines say which message they came from, by the client's own formats, with the count and
+-- the item as linked; a wording no format explains keeps the kind empty; another player's loot
+-- is never written.
+local lootByItem = {}
+for _, session in ipairs(WidsithDB.sessions) do
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local f = {}
+    for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+    if f[2] == "LOOT" then lootByItem[f[3]] = f end
+  end
+end
+local function lootIs(item, qty, source, kind, itemString)
+  local f = lootByItem[item]
+  return f ~= nil and f[4] == qty and (f[5] or "") == source and (f[7] or "") == kind and (f[8] or "") == itemString
+end
+expect(lootIs("2589", "3", "Creature-0-4621-0-46196-476-0000BCECFD", "loot", "item:2589::::::::1:::::::"),
+  "corpse loot wasn't written as kind loot with its count, source and item string")
+expect(lootIs("6948", "1", "", "item", "item:6948::::::::1:::::::"), "a pushed item wasn't written as kind item")
+expect(lootIs("2581", "2", "", "create", "item:2581::::::::1:::::::"), "a craft wasn't written as kind create with its count")
+expect(lootIs("1234", "1", "", "refund", "item:1234::::::::1:::::::"), "a refund wasn't written as kind refund")
+expect(lootIs("999", "1", "", "", "item:999::::::::1:::::::"), "a wording no format explains wasn't written with its kind empty")
+expect(lootByItem["4321"] == nil, "another player's loot was written")
+expect(lootIs("268213", "1", "", "item", "item:268213::::::::80:577::6:5:6652:10353:10254:1527:10255::::::"),
+  "an upgraded item's link wasn't kept whole")
+-- Quests: the objectives listed at accept, progress as it comes, QDONE once when the game says
+-- ready, and a quest already ready as a session begins written as the opening state.
+local questLines, doneOpening = {}, 0
+for _, session in ipairs(WidsithDB.sessions) do
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local f = {}
+    for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+    if f[2] == "QPROG" and f[3] == "100" then questLines[#questLines + 1] = "P" .. f[4] .. ":" .. f[5] .. "/" .. f[6] end
+    if f[2] == "QDONE" and f[3] == "100" then questLines[#questLines + 1] = "D" .. (f[4] or "") end
+    if f[2] == "QDONE" and f[3] == "200" then
+      if f[4] == "1" then doneOpening = doneOpening + 1 else questLines[#questLines + 1] = "D200" end
+    end
+  end
+end
+expect(table.concat(questLines, " ") == "P1:0/8 P2:0/1 P1:3/8 P1:8/8 P2:1/1 D",
+  "the quest's lines aren't the list at accept, the progress, then one QDONE: " .. table.concat(questLines, " "))
+expect(doneOpening == #WidsithDB.sessions, "a quest already ready wasn't written as the opening state of every session (" .. doneOpening .. " of " .. #WidsithDB.sessions .. ")")
+-- Gear as linked: every EQUIP with an item carries its item string, an emptied slot none; a
+-- session's first SNAP lists the worn items' strings, later ones only when they changed.
+local equipStringsRight, snapFirstHas, snapLaterEmpty, snapRepeats = true, true, false, false
+for _, session in ipairs(WidsithDB.sessions) do
+  local firstSnap, lastStrings = true, nil
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local f = {}
+    for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+    if f[2] == "EQUIP" then
+      local want = f[4] ~= "" and ("item:" .. f[4] .. "::::::::1:::::::") or ""
+      if (f[5] or "") ~= want then equipStringsRight = false end
+    elseif f[2] == "SNAP" then
+      local strings = f[12] or ""
+      if firstSnap then
+        if strings == "" then snapFirstHas = false end
+        firstSnap = false
+      elseif strings == "" then
+        snapLaterEmpty = true
+      elseif strings == lastStrings then
+        snapRepeats = true
+      end
+      if strings ~= "" then lastStrings = strings end
+    end
+  end
+end
+expect(equipStringsRight, "an EQUIP line's item string doesn't match its item")
+expect(snapFirstHas, "a session's first SNAP doesn't list the worn items' strings")
+expect(snapLaterEmpty, "no later SNAP left the strings out although nothing changed")
+expect(not snapRepeats, "a SNAP repeated the strings it had already written")
+expect(recapNamed, "a recap's hit from a player wasn't written with their GUID and the recap's name")
+expect(blessingNamed, "an aura cast by a player wasn't written with their GUID and name")
+expect(intellectUnnamed, "an aura whose caster the game can't name wasn't written with the GUID alone")
+expect(not wordPlayer, "the word Player was written for a caster or a recap's source")
+
+-- Money: in the first session, each change with the reason, window, stated amount and source
+-- the scene gave it, by how much the total moved; nothing written for the refused flight; no
+-- letter's sender or subject, or mail's recipient, anywhere.
+local moneyLines, previousTotal = {}, 334
+local quest, party, privateWritten = nil, nil, false
+for line in (table.concat(WidsithDB.sessions[1].chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+  local f = {}
+  for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+  if f[2] == "MONEY" then
+    local total = tonumber(f[3])
+    moneyLines[#moneyLines + 1] = { delta = total - previousTotal, kind = f[4] or "", window = f[5] or "", said = f[6] or "", source = f[7] or "", fields = #f }
+    previousTotal = total
+  end
+  if f[2] == "QACCEPT" and f[3] == "100" then quest = f end
+  if f[2] == "GROUP" and f[3] == "2" then party = f end
+end
+for _, session in ipairs(WidsithDB.sessions) do
+  local text = table.concat(session.chunks, "\n")
+  if text:find("Stormwind Auction House", 1, true) or text:find("Auction successful", 1, true) or text:find("Bertrand", 1, true) then
+    privateWritten = true
+  end
+end
+local expectedMoney = {
+  { "a quest's reward", 1200, "quest", "", "1200", "" },
+  { "a corpse's coin", 120, "loot", "", "120", CORPSE },
+  { "a share", 45, "share", "", "45", "" },
+  { "a corpse's coin whose message came late", 33, "loot", "", "", CORPSE2 },
+  { "a vendor's purchase", -100, "buy", "merchant", "100", VENDOR },
+  { "a sale to a vendor", 30, "sell", "merchant", "30", VENDOR },
+  { "a repair", -340, "repair", "merchant", "340", VENDOR },
+  { "a discounted flight", -450, "taxi", "taxinode", "500", FLIGHT },
+  { "a trainer's service", -500, "train", "trainer", "500", TRAINER },
+  { "money sent by mail", -200, "mailsend", "mailinfo", "200", "" },
+  { "postage", -30, "postage", "mailinfo", "30", "" },
+  { "an auction's proceeds", 7600, "ahsale", "mailinfo", "7600", "" },
+  { "a change with no reason at the mailbox", 15, "", "mailinfo", "", "" },
+  { "a guild bank withdrawal", 20000, "guildbankout", "guildbanker", "20000", "" },
+  { "the change after a refused flight", 7, "", "", "", "" },
+  { "a change whose loot message came after it in the same frame", 65, "loot", "", "65", "" },
+  { "the change after that late message", 3, "", "", "", "" },
+  { "the first of two changes in one frame", 9, "", "", "", "" },
+  { "the second, which the late message states exactly", 80, "loot", "", "80", "" },
+}
+expect(#moneyLines == moneyChanges and #moneyLines == #expectedMoney,
+  #moneyLines .. " MONEY lines for " .. moneyChanges .. " changes: a reason no change followed wrote a line, or a change wrote none")
+for i, e in ipairs(expectedMoney) do
+  local m = moneyLines[i]
+  local got = m and string.format("%d %s/%s/%s/%s", m.delta, m.kind, m.window, m.said, m.source) or "nothing"
+  expect(m and m.fields == 7 and m.delta == e[2] and m.kind == e[3] and m.window == e[4] and m.said == e[5] and m.source == e[6],
+    e[1] .. " isn't written as " .. string.format("%d %s/%s/%s/%s", e[2], e[3], e[4], e[5], e[6]) .. ": " .. got)
+end
+expect(not privateWritten, "a letter's sender or subject, or a letter's recipient, was written")
+expect(quest ~= nil and quest[6] == "4" and quest[7] == "6",
+  "a quest's level and difficulty level weren't written at accept: " .. (quest and table.concat(quest, " ", 6) or "no QACCEPT"))
+expect(party ~= nil and party[5] == "1:Player-4747-0CCCCCCC:Maela-Whitemane" and party[6] == "7",
+  "a party member's level wasn't written beside them: " .. (party and table.concat(party, " ", 3) or "no GROUP"))
+
+-- Weather, daylight, gear wear, duels, rolls and loading screens, in the first session; then
+-- each later session's opening weather and daylight, and every SNAP's durability field.
+local byKind = {}
+local brokenAt = {}
+for _, l in ipairs(first) do
+  byKind[l.kind] = byKind[l.kind] or {}
+  table.insert(byKind[l.kind], (l.fields:gsub("\t", " ")))
+  if l.kind == "BROKEN" then brokenAt[#brokenAt + 1] = l.t - burstFromMs end
+end
+local function kindIs(kind, want)
+  local got = table.concat(byKind[kind] or {}, " / ")
+  expect(got == table.concat(want, " / "), kind .. " lines aren't " .. table.concat(want, " / ") .. ": " .. got)
+end
+kindIs("WEATHER", { "1 0.5000", "1 0.8000" })
+kindIs("DAYLIGHT", { "1", "0" })
+kindIs("BROKEN", { "8 3003" })
+expect(readsInBurst == 0, "durability was read " .. readsInBurst .. " times at the events themselves")
+expect(readsAfterBurst == addonTable.EQUIP_SLOTS, "a burst of the durability event read " .. readsAfterBurst .. " slots, not one pass")
+expect(brokenAt[1] and brokenAt[1] >= 0 and brokenAt[1] <= 5000, "the BROKEN line wasn't written within five seconds of the burst's start")
+expect(passesInFight >= 2 and passesInFight <= 3, "a twelve-second fight's durability events made " .. passesInFight .. " passes, not one each five seconds")
+kindIs("DUEL", { "knockout Aldwin Thornby Maela Dunwood", "retreat Maela Dunwood Aldwin Thornby", "finished  " })
+kindIs("ROLL", { "42 1 100", "3 1 6" })
+kindIs("LOOTROLL", { "need 4567 item:4567::::::::5:::::::", "greed 4568 item:4568::::::::5:::::::",
+  "pass 4569 item:4569::::::::5:::::::", "won 4567 item:4567::::::::5:::::::" })
+expect(lootIs("4567", "1", "", "loot", "item:4567::::::::5:::::::"), "the loot after a won roll wasn't written as LOOT")
+expect(lootByItem["4568"] == nil and lootByItem["4569"] == nil, "a roll's message was written as loot")
+kindIs("LOADSCREEN", { "5.0" })
+expect(clockBeforeScreen < loadingFrom, "the scenes ran past the loading screen's start")
+local checkSaid
+for _, line in ipairs(chat) do
+  if line:find("missing messages: ", 1, true) then checkSaid = line:match("missing messages: (.*)$") end
+end
+expect(checkSaid == "none", "/widsith check didn't say every message is there: " .. tostring(checkSaid))
+for s = 2, #WidsithDB.sessions do
+  local weatherLines, daylightLines = {}, {}
+  for _, l in ipairs(lines(WidsithDB.sessions[s])) do
+    if l.kind == "WEATHER" then weatherLines[#weatherLines + 1] = l.fields:gsub("\t", " ") end
+    if l.kind == "DAYLIGHT" then daylightLines[#daylightLines + 1] = l.fields end
+  end
+  expect(table.concat(weatherLines, " / ") == "1 0.8000" and table.concat(daylightLines, " / ") == "0",
+    "session " .. s .. " didn't open with the weather and the night: " .. table.concat(weatherLines, " / ") .. "; " .. table.concat(daylightLines, " / "))
+end
+local wantWear = {}
+for slot = 1, addonTable.EQUIP_SLOTS do wantWear[slot] = "" end
+wantWear[6], wantWear[7], wantWear[8] = "30/40", "0/50", "12/60"
+local firstWear, wearShape = nil, true
+for _, session in ipairs(WidsithDB.sessions) do
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local f = {}
+    for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+    if f[2] == "SNAP" then
+      local entries = select(2, (f[13] or ""):gsub(",", ",")) + 1
+      if entries ~= addonTable.EQUIP_SLOTS then wearShape = false end
+      firstWear = firstWear or f[13]
+    end
+  end
+end
+expect(firstWear == table.concat(wantWear, ","), "the opening SNAP's durability isn't each slot's current/max: " .. tostring(firstWear))
+expect(wearShape, "a SNAP's durability field hasn't one entry per slot")
+
 local NEW = { FIGHT = true, RECAP = true, AURA = true, CC = true, MIRROR = true, DISCOVER = true, TALLY = true, NPCSAY = true, RULES = true,
   LEVEL = true, DEATH = true, COMBAT = true, SESSION = true, END = true, ERR = true, REP = true, SPEECH = true, RECIPES = true,
-  GEARSET = true, GEARSWAP = true, TALENTS = true, EQUIP = true, SPEC = true, CURRENCY = true, EMOTE = true }
+  GEARSET = true, GEARSWAP = true, TALENTS = true, EQUIP = true, SPEC = true, CURRENCY = true, EMOTE = true,
+  WEATHER = true, DAYLIGHT = true, BROKEN = true, DUEL = true, ROLL = true, LOOTROLL = true, LOADSCREEN = true }
 local kinds = {}
 for s, session in ipairs(WidsithDB.sessions) do
   realPrint("== session " .. s .. " ==")
