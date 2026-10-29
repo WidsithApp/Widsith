@@ -1283,9 +1283,9 @@ local MONEY_HOOKS = {
   { "C_Container.UseContainerItem", "sell", sellPrice, npc = "merchant" },
   { "C_MerchantFrame.SellAllJunkItems", "junk", nil, npc = "merchant", repeats = true },
   { "BuybackItem", "buyback", function(slot) return (select(3, ask("GetBuybackItemInfo", slot))) end, npc = "merchant" },
-  { "RepairAllItems", "repair", function(guildBankRepair)
-    return repairCost, guildBankRepair and "guildrepair" or nil
-  end, npc = "merchant" },
+  -- Asked to use the guild's funds or not, a change in the player's money means
+  -- the player paid (when the guild pays, nothing changes and the reason lapses).
+  { "RepairAllItems", "repair", function() return repairCost end, npc = "merchant" },
   { "TakeTaxiNode", "taxi", function(index) return (ask("TaxiNodeCost", index)) end, npc = "taxinode" },
   { "BuyTrainerService", "train", function(index) return (ask("GetTrainerServiceCost", index)) end, npc = "trainer" },
   { "ConfirmTalentWipe", "respec", function() return talentWipeCost end },
