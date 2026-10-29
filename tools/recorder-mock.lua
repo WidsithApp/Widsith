@@ -850,6 +850,21 @@ end
 expect(statsLines > 0, "no STATS line was written at all")
 expect(not statsInFight, "a STATS line was written while the game hid the sheet")
 expect(statsOwedWritten, "the sheet a fight hid wasn't written in the second after it")
+-- A session's opening line says how big the file was before it: a number, never smaller than
+-- the one before.
+local sizeFields, sizesInOrder = 0, true
+for i, session in ipairs(WidsithDB.sessions) do
+  local first = (table.concat(session.chunks, "\n") .. "\n"):match("([^\n]*)\n")
+  local f = {}
+  for v in (first .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+  local bytes = f[2] == "SESSION" and tonumber(f[14]) or nil
+  if bytes then
+    sizeFields = sizeFields + 1
+    if sizeFields > 1 and bytes < (WidsithDB.sessions[i - 1].sizeSeen or 0) then sizesInOrder = false end
+    session.sizeSeen = bytes
+  end
+end
+expect(sizeFields == #WidsithDB.sessions and sizesInOrder, "a SESSION line doesn't say what the file held before it, or the sizes don't grow")
 expect(recapNamed, "a recap's hit from a player wasn't written with their GUID and the recap's name")
 expect(blessingNamed, "an aura cast by a player wasn't written with their GUID and name")
 expect(intellectUnnamed, "an aura whose caster the game can't name wasn't written with the GUID alone")

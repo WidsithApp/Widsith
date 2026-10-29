@@ -94,6 +94,22 @@ local function flush()
   buffer = {}
 end
 
+-- The recording's size: the lines' own bytes, on file and waiting in memory,
+-- before the game's wrapping of the saved file. One session's when given,
+-- otherwise everything's.
+local function estimateBytes(one)
+  local total = 0
+  for _, s in ipairs(db.sessions) do
+    if one == nil or s == one then
+      for _, c in ipairs(s.chunks) do total = total + #c end
+    end
+  end
+  if one == nil or one == session then
+    for _, l in ipairs(buffer) do total = total + #l end
+  end
+  return total
+end
+
 -- Append one line: <t> <TYPE> <fields...>
 function WJ.write(kind, ...)
   if not session then return end
@@ -229,6 +245,7 @@ function WJ.startSession(isLogin, isReload, isResume)
   startClock = GetTime()
   local serverTime = GetServerTime()
   local previous = db.sessions[#db.sessions]
+  local onFile = estimateBytes()   -- what the file held before this session, for its SESSION line
   -- A counter of its own, so pruning old sessions from the file can never make a later
   -- session's id repeat an earlier one's (the id is serverTime-ordinal).
   db.nextSession = (db.nextSession or #db.sessions) + 1
@@ -249,7 +266,7 @@ function WJ.startSession(isLogin, isReload, isResume)
 
   local version, build, _, interface = GetBuildInfo()
   WJ.write("SESSION", serverTime, WJ.VERSION, WJ.FORMAT, version, build,
-    WOW_PROJECT_ID, GetLocale(), isLogin, isReload, UnitGUID("player"), isResume and true or nil)
+    WOW_PROJECT_ID, GetLocale(), isLogin, isReload, UnitGUID("player"), isResume and true or nil, onFile)
 
   WJ.requestTimePlayed()
   -- Equipment (and some unit data) isn't loaded yet at PLAYER_ENTERING_WORLD;
@@ -533,15 +550,6 @@ function WJ.printClientCheck()
   if WJ.savesNotLoaded then print(PREFIX .. "the game didn't load the recording file at the last reload.") end
 end
 
-local function estimateBytes()
-  local total = 0
-  for _, s in ipairs(db.sessions) do
-    for _, c in ipairs(s.chunks) do total = total + #c end
-  end
-  for _, l in ipairs(buffer) do total = total + #l end
-  return total
-end
-
 local function describeSize(bytes)
   if bytes >= 1024 * 1024 then return format("about %.1f MB", bytes / (1024 * 1024)) end
   return format("about %d KB", math.max(1, floor(bytes / 1024 + 0.5)))
@@ -572,6 +580,7 @@ local HELP = {
   { "", "shows what has been recorded so far." },
   { "help", "shows this list." },
   { "about", "says what " .. WJ.NAME .. " is." },
+  { "size", "says how big the recording is, and which sessions are the largest." },
   { "pause", "stops recording until you resume, log in again or reload." },
   { "resume", "starts recording again." },
   { "save", "reloads the interface, which writes the recording to disk." },
@@ -593,11 +602,29 @@ local function printCommands(list)
   end
 end
 
+-- /widsith size: the whole file, the largest sessions, and this one.
+local function printSize()
+  print(format("%s%s on file, %s in all. The game writes the whole file at every logout and reload.",
+    PREFIX, count(#db.sessions, "session", "sessions"), describeSize(estimateBytes())))
+  local sizes = {}
+  for i, s in ipairs(db.sessions) do sizes[#sizes + 1] = { n = i, s = s, bytes = estimateBytes(s) } end
+  table.sort(sizes, function(a, b) return a.bytes > b.bytes end)
+  for i = 1, math.min(3, #sizes) do
+    local e = sizes[i]
+    local started = date and date("%Y-%m-%d", e.s.startedAt or 0) or ""
+    print(format("%s  session %d: %s, %s, started %s%s", PREFIX, e.n, describeSize(e.bytes),
+      count((e.s.lines or 0) + (e.s == session and #buffer or 0), "line", "lines"),
+      tostring(started), e.s == session and " (this one)" or ""))
+  end
+end
+
 local function handleCommand(msg)
   local typed = msg:match("^(%S*)")
   local cmd = typed:lower()
   if cmd == "" then
     printStatus()
+  elseif cmd == "size" then
+    printSize()
   elseif cmd == "help" then
     printCommands(HELP)
     if WJ.debug then
