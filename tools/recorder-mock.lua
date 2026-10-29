@@ -144,6 +144,12 @@ function GetServerTime() return 1790766000 + math.floor(clock) end
 function GetPlayerInfoByGUID(guid)
   if guid == "Player-4747-0BBBBBBB" then return "Paladin", "PALADIN", "Human", "Human", 2, "Someone", "" end
 end
+-- The character sheet: the attribute calls are SecretWhenUnitStatsRestricted and answer secrets
+-- in combat; the item level is readable throughout, so a line read in a fight is part hidden.
+function UnitStat(_, i) if inCombat then return SECRET, SECRET, SECRET, SECRET end return 10 + i, 12 + i, 2, 0 end
+function UnitArmor() if inCombat then return SECRET, SECRET end return 50, 55 end
+function UnitHealthMax() if inCombat then return SECRET end return 136 end
+function GetAverageItemLevel() return 20, 18.5 end
 function GetBuildInfo() return "1.60.1", "70658", "Oct 27 2026", 16001 end
 function GetLocale() return "enUS" end
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
@@ -529,6 +535,8 @@ fire("UNIT_AURA", "player", { addedAuras = { { name = SECRET, spellId = SECRET, 
 fire("UNIT_AURA", "player", { isFullUpdate = true })
 fire("LOSS_OF_CONTROL_ADDED", "player", 1)
 fire("LOSS_OF_CONTROL_ADDED", "targettarget", 1)
+-- a piece of gear changed in the fight: the sheet it asks for is hidden until the fight ends
+fire("PLAYER_EQUIPMENT_CHANGED", 10, false)
 advance(10)
 -- the fight leaves a poison on the character, never announced
 present.HARMFUL[1] = { name = "Poison", spellId = 11918, isHelpful = false, sourceUnit = "target", duration = 15, applications = 0, auraInstanceID = 140 }
@@ -705,6 +713,8 @@ expect(has(afterLeave, "AURA has 6673") and has(afterLeave, "AURA has 20217"),
   "the auras weren't read a second after the fight that the session opened in")
 expect(refusedInEncounter > 0, "the stand-in never refused a read, so the guard went untested")
 expect(has(afterLeave, "AURA gain 139"), "an announced aura went unwritten when its caster couldn't be read")
+expect(not has(beforeLeave, "STATS") and has(afterLeave, "STATS"),
+  "the sheet of a session that opened in a fight should be written after the fight, not hidden inside it")
 expect(not seen.ERR, "a refused aura read was written as ERR")
 local framesWithReads = 0
 for _ in pairs(statFrames) do framesWithReads = framesWithReads + 1 end
@@ -820,6 +830,26 @@ for _, session in ipairs(WidsithDB.sessions) do
     if (f[2] == "AURA" and f[10] == "Player") or (f[2] == "RECAP" and f[13] == "Player") then wordPlayer = true end
   end
 end
+-- The sheet is never written while the game hides part of it: no STATS inside a fight in any
+-- session, and the one a gear change asked for in a fight follows that fight within a second.
+local statsInFight, statsOwedWritten, statsLines = false, false, 0
+for _, session in ipairs(WidsithDB.sessions) do
+  local fighting, leftAt = false, nil
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local t, kind, rest = line:match("^(%d+)\t([^\t]+)\t?(.*)$")
+    if kind == "COMBAT" then
+      fighting = rest == "enter"
+      if not fighting then leftAt = tonumber(t) end
+    elseif kind == "STATS" then
+      statsLines = statsLines + 1
+      if fighting then statsInFight = true end
+      if leftAt and tonumber(t) - leftAt <= 1500 then statsOwedWritten = true end
+    end
+  end
+end
+expect(statsLines > 0, "no STATS line was written at all")
+expect(not statsInFight, "a STATS line was written while the game hid the sheet")
+expect(statsOwedWritten, "the sheet a fight hid wasn't written in the second after it")
 expect(recapNamed, "a recap's hit from a player wasn't written with their GUID and the recap's name")
 expect(blessingNamed, "an aura cast by a player wasn't written with their GUID and name")
 expect(intellectUnnamed, "an aura whose caster the game can't name wasn't written with the GUID alone")

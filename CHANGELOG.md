@@ -5,6 +5,7 @@ Each version of Widsith, newest first, with the date it was handed out. The addo
 ## 0.5.0 · not yet released
 
 - Other players are named. A buff another player casts on you records who cast it, and a death at another player's hands records who dealt each hit, as the game names them. Group members and trade partners were already named; this makes the recording consistent.
+- The character sheet is never recorded while a fight hides part of it. The line waits for the fight to end, instead of being written with its attributes empty.
 
 ## 0.4.7 · 2026-10-29
 

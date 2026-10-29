@@ -83,6 +83,8 @@ handlers.PLAYER_REGEN_ENABLED  = function()
   write("COMBAT", "leave")
   -- The fight's summary, once the game releases its numbers (Moments.lua).
   if WJ.onCombatEnd then WJ.onCombatEnd() end
+  -- The character sheet the fight kept hidden, if a line was due (Extras.lua).
+  if WJ.statsAfterCombat then WJ.statsAfterCombat() end
 end
 
 ---------------------------------------------------------------------------
