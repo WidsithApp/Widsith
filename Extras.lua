@@ -14,6 +14,9 @@ local write, counts = WJ.write, WJ.counts
 local handlers = WJ.handlers
 local issecretvalue = issecretvalue
 
+-- The game's Lua has unpack as a global; newer Lua keeps it in table.
+local unpack = unpack or table.unpack
+
 local function secret(v)
   return issecretvalue ~= nil and issecretvalue(v)
 end
@@ -476,13 +479,15 @@ local function recheckEquip(slot)
   item = WJ.field(item)
   if item == equipWritten[slot] then return end
   equipWritten[slot] = item
-  write("EQUIP", slot, item)
+  write("EQUIP", slot, item, WJ.equipString(slot))
   WJ.statsSoon()
 end
 
+-- Beside the item's ID, the item as the game links it (Core.lua): an upgrade
+-- or an enchant changes the string and not the ID.
 handlers.PLAYER_EQUIPMENT_CHANGED = function(slot)
   local item = WJ.field(GetInventoryItemID("player", slot))
-  write("EQUIP", slot, item)
+  write("EQUIP", slot, item, WJ.equipString(slot))
   WJ.statsSoon()
   if not usable(slot) then return end
   equipWritten[slot] = item
@@ -494,7 +499,13 @@ end
 -- Stats: what the gear added up to, as the character sheet shows it.
 -- Written with every SNAP (Core.snapshot) and once equipment has settled
 -- after a change (the client raises every slot at login), and only when a
--- value differs from the last STATS of the session. Every call is guarded:
+-- value differs from the last STATS of the session. Never while the game
+-- hides any of it: in combat, an encounter or a PvP match the attribute
+-- calls answer secret values, and a line with its attributes empty says
+-- nothing the sheet would show. Such a line is owed instead, and written a
+-- second after combat ends, or at the next snapshot or gear change if the
+-- restriction still holds. A function the client lacks is an empty field
+-- and never defers a line; only a hidden value does. Every call is guarded:
 -- a function the client doesn't have (WoW Forever, older rulesets) or one
 -- that throws is an empty field. The stat APIs are SecretWhenUnitStatsRestricted
 -- (Blizzard's UI source, warcraft.wiki.gg), so nothing is compared or added
@@ -504,12 +515,17 @@ end
 
 local STATS_SETTLE = 1   -- s after the last EQUIP of a burst
 
--- The n-th return of fn(...), or nil when fn is missing or throws.
+local hiddenRead = false   -- whether a read since the last reset answered a secret value
+
+-- The n-th return of fn(...), or nil when fn is missing or throws. A secret
+-- answer is returned as it is (field() empties it) and noted.
 local function ask(fn, n, ...)
   if type(fn) ~= "function" then return nil end
   local results = { pcall(fn, ...) }
   if not results[1] then return nil end
-  return results[n + 1]
+  local v = results[n + 1]
+  if secret(v) then hiddenRead = true end
+  return v
 end
 
 -- The sheet's Critical Strike (PaperDollFrame_SetCritChance): the highest of
@@ -667,6 +683,7 @@ end
 local PRIMARY = 12       -- the only field not counted as "something readable"
 local STATS_FIELDS = 51
 local lastStats
+local statsOwed = false   -- a line the game hid, to be written once it can be read whole
 
 -- STATS ilvl str agi sta int armor crit haste mastery vers hpMax primary, then
 -- spi powerType powerMax ap rap hitMelee hitRanged hitSpell critMelee critRanged critSpell
@@ -674,6 +691,7 @@ local lastStats
 -- defense dodge parry block shieldBlock resHoly resFire resNature resFrost resShadow
 -- resArcane mhMin mhMax mhSpeed ohMin ohMax ohSpeed rangedMin rangedMax rangedSpeed
 function WJ.writeStats()
+  hiddenRead = false
   local sheet, sheetCount, foreverCrit, foreverHaste = sheetValues()
   local values = {
     ask(GetAverageItemLevel, 2),        -- equipped average, unrounded
@@ -691,12 +709,17 @@ function WJ.writeStats()
     not WJ.isForever and primaryStat() or nil,
   }
   for i = 1, sheetCount do values[PRIMARY + i] = sheet[i] end
+  if hiddenRead then   -- the game is hiding part of the sheet: say it when it can be read whole
+    statsOwed = true
+    return
+  end
+  statsOwed = false
   local fields, any = {}, false
   for i = 1, STATS_FIELDS do
     fields[i] = WJ.field(values[i])
     if fields[i] ~= "" and i ~= PRIMARY then any = true end
   end
-  if not any then return end   -- nothing readable (all restricted): nothing to say
+  if not any then return end   -- nothing readable (the client has none of it): nothing to say
   local key = table.concat(fields, "\t")
   if key == lastStats then return end
   lastStats = key
@@ -712,6 +735,12 @@ end)
 function WJ.statsSoon()
   if statsTimer then statsTimer:Cancel() end
   statsTimer = C_Timer.NewTimer(STATS_SETTLE, writeStatsSettled)
+end
+
+-- Called when combat ends (Events.lua): a line the fight hid is written a
+-- second later, when the game has usually released the sheet.
+function WJ.statsAfterCombat()
+  if statsOwed then WJ.statsSoon() end
 end
 
 handlers.CURRENCY_DISPLAY_UPDATE = function(currencyID, quantity, change, gainSource, destroyReason)
@@ -1078,6 +1107,8 @@ local function writeTrade()
   if not trade or trade.written then return end
   trade.written = true
   write("TRADE", trade.guid, trade.gaveMoney, trade.gotMoney, trade.gave, trade.got, trade.name)
+  -- The money it moved explains the change that comes with it (Events.lua).
+  if WJ.moneyFromTrade then WJ.moneyFromTrade(trade.gaveMoney, trade.gotMoney) end
 end
 
 handlers.TRADE_SHOW = function() trade = nil readTrade() end

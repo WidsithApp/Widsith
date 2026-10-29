@@ -182,7 +182,15 @@ end
 local periodicDue = false
 local loadingSince   -- GetTime() when the loading screen now up appeared; nil when none is
 
+-- The end of a screen also writes LOADSCREEN seconds: how long it was up, to a
+-- tenth of a second. GetTime() is the computer's uptime, not the game's, so it
+-- runs on through the screen; it is updated once a frame. At a login or a
+-- reload the addon loads inside the screen and never hears it begin, so that
+-- one has no line.
 function WJ.onLoadingScreen(shown)
+  if not shown and loadingSince then
+    WJ.write("LOADSCREEN", string.format("%.1f", GetTime() - loadingSince))
+  end
   loadingSince = shown and GetTime() or nil
 end
 

@@ -76,6 +76,7 @@ end
 local db                 -- WidsithDB
 local session            -- current session table inside db.sessions
 local buffer = {}        -- lines not yet packed into a chunk
+local lastEquipStrings   -- the worn items' strings as last written with a SNAP this session
 local startClock         -- GetTime() at session start
 local paused = false     -- see WJ.pause(); declared here so WJ.health() sees it
 local previousOnFile     -- what the file held of the session before this load's first, for debug mode
@@ -92,6 +93,22 @@ local function flush()
   session.chunks[#session.chunks + 1] = table.concat(buffer, "\n")
   session.lines = (session.lines or 0) + #buffer
   buffer = {}
+end
+
+-- The recording's size: the lines' own bytes, on file and waiting in memory,
+-- before the game's wrapping of the saved file. One session's when given,
+-- otherwise everything's.
+local function estimateBytes(one)
+  local total = 0
+  for _, s in ipairs(db.sessions) do
+    if one == nil or s == one then
+      for _, c in ipairs(s.chunks) do total = total + #c end
+    end
+  end
+  if one == nil or one == session then
+    for _, l in ipairs(buffer) do total = total + #l end
+  end
+  return total
 end
 
 -- Append one line: <t> <TYPE> <fields...>
@@ -229,6 +246,7 @@ function WJ.startSession(isLogin, isReload, isResume)
   startClock = GetTime()
   local serverTime = GetServerTime()
   local previous = db.sessions[#db.sessions]
+  local onFile = estimateBytes()   -- what the file held before this session, for its SESSION line
   -- A counter of its own, so pruning old sessions from the file can never make a later
   -- session's id repeat an earlier one's (the id is serverTime-ordinal).
   db.nextSession = (db.nextSession or #db.sessions) + 1
@@ -246,10 +264,11 @@ function WJ.startSession(isLogin, isReload, isResume)
   db.sessions[#db.sessions + 1] = session
   db.character = describeCharacter()
   for k in pairs(counts) do counts[k] = 0 end
+  lastEquipStrings = nil
 
   local version, build, _, interface = GetBuildInfo()
   WJ.write("SESSION", serverTime, WJ.VERSION, WJ.FORMAT, version, build,
-    WOW_PROJECT_ID, GetLocale(), isLogin, isReload, UnitGUID("player"), isResume and true or nil)
+    WOW_PROJECT_ID, GetLocale(), isLogin, isReload, UnitGUID("player"), isResume and true or nil, onFile)
 
   WJ.requestTimePlayed()
   -- Equipment (and some unit data) isn't loaded yet at PLAYER_ENTERING_WORLD;
@@ -282,6 +301,8 @@ end
 
 function WJ.endSession(reason)
   if not session then return end
+  -- A money change still waiting for its frame goes in before the end (Events.lua).
+  if WJ.flushMoney then WJ.flushMoney() end
   WJ.write("END", GetServerTime(), reason)
   flush()
   session.closed = true
@@ -338,6 +359,7 @@ end
 ---------------------------------------------------------------------------
 
 local EQUIP_SLOTS = 19
+WJ.EQUIP_SLOTS = EQUIP_SLOTS
 
 -- A quest log entry the player would call a quest: not a header, and not one of the hidden
 -- tracking quests the client keeps in the log ("Level 3", "Level 13" … seen in the game),
@@ -367,10 +389,37 @@ local function equipIDs()
   return ids
 end
 
-function WJ.snapshot()
+-- A worn item as the game links it: the item string, with the enchant, gems,
+-- suffix, bonus IDs and upgrade context that make the worn copy the item it
+-- is. Empty for an empty slot, or one the game hides.
+function WJ.equipString(slot)
+  if type(GetInventoryItemLink) ~= "function" then return "" end
+  local link = GetInventoryItemLink("player", slot)
+  if issecretvalue and issecretvalue(link) then return "" end
+  if type(link) ~= "string" then return "" end
+  return link:match("|H(item:[^|]+)|h") or ""
+end
+
+local function equipStrings()
+  local strings = {}
+  for slot = 1, EQUIP_SLOTS do strings[slot] = WJ.equipString(slot) end
+  return strings
+end
+
+-- opening: the session's opening snapshot, whose durability read is where
+-- watching for broken gear starts (Events.lua).
+function WJ.snapshot(opening)
   local mapID, x, y = WJ.currentPosition()
+  -- The worn items' strings go with the first snapshot of a session and then
+  -- only when they differ from the last written: a quiet session costs nothing.
+  local strings = WJ.list(equipStrings())
+  local changed = strings ~= lastEquipStrings
+  lastEquipStrings = strings
+  -- Each worn slot's durability, in the same order as the items, every time.
+  local durability = WJ.durabilityList and WJ.durabilityList(opening == true) or nil
   WJ.write("SNAP", UnitLevel("player"), UnitXP("player"), UnitXPMax("player"), GetMoney(),
-    mapID, WJ.coord(x), WJ.coord(y), WJ.list(questIDs()), WJ.list(equipIDs()))
+    mapID, WJ.coord(x), WJ.coord(y), WJ.list(questIDs()), WJ.list(equipIDs()), changed and strings or nil,
+    durability)
   WJ.write("COUNT", counts.pos, counts.kills, counts.loot, counts.xp, counts.quests, counts.deaths,
     counts.jumps, counts.shots, counts.emotes)
   -- The character sheet's numbers, when they changed (Extras.lua).
@@ -381,11 +430,15 @@ end
 
 -- The opening snapshot plus the state that has no change event of its own
 -- yet in this session: quest titles (QLABEL), professions (SKILL), reputations (REP), currencies (CURRENCY), spec,
--- talents, gear sets, hearth location, the rules played under, auras and the game's counters.
--- Written once the client has loaded that data.
+-- talents, gear sets, hearth location, the weather and the time of day, the rules played under,
+-- auras and the game's counters. Written once the client has loaded that data.
 function WJ.openingState()
-  WJ.snapshot()
+  WJ.snapshot(true)
+  if WJ.writeOpeningWorld then WJ.guard("openingWorld", WJ.writeOpeningWorld)() end
   if WJ.writeQuestLabels then WJ.writeQuestLabels() end
+  -- The quest log's state as the session begins (Events.lua): the cache seeded, the quests
+  -- already ready to turn in written as such.
+  if WJ.diffQuestLog then WJ.diffQuestLog(true, true) end
   if WJ.writeOpeningExtras then WJ.writeOpeningExtras() end
   -- Guarded on its own: whatever goes wrong there is named, and nothing above depends on it.
   if WJ.writeOpeningMoments then WJ.guard("openingMoments", WJ.writeOpeningMoments)() end
@@ -453,6 +506,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
     WJ.db = db
     WJ.registerEvents(self)
     if WJ.installHooks then run("hooks", WJ.installHooks) end
+    if WJ.installMoneyHooks then run("money hooks", WJ.installMoneyHooks) end
     self:UnregisterEvent("ADDON_LOADED")
   elseif event == "PLAYER_ENTERING_WORLD" then
     local isLogin, isReload = ...
@@ -483,8 +537,8 @@ end)
 local USED_APIS = {
   "C_Map.GetBestMapForUnit", "C_Map.GetPlayerMapPosition", "C_Map.GetMapInfo", "C_Map.GetWorldPosFromMapPos",
   "UnitPosition", "C_QuestLog.GetNumQuestLogEntries", "C_QuestLog.GetInfo", "C_QuestLog.GetQuestObjectives",
-  "C_QuestLog.GetTitleForQuestID", "RequestTimePlayed", "ChatFrame_DisplayTimePlayed", "GetLootSourceInfo",
-  "C_Item.GetItemQualityByID", "C_Item.GetItemInfo", "C_MountJournal.GetMountFromSpell",
+  "C_QuestLog.GetTitleForQuestID", "C_QuestLog.ReadyForTurnIn", "C_QuestLog.IsComplete", "RequestTimePlayed", "ChatFrame_DisplayTimePlayed", "GetLootSourceInfo",
+  "C_Item.GetItemQualityByID", "C_Item.GetItemInfo", "GetInventoryItemLink", "C_MountJournal.GetMountFromSpell",
   "C_Reputation.GetFactionDataByID", "C_Reputation.GetNumFactions", "C_Reputation.GetFactionDataByIndex", "GetProfessions", "GetProfessionInfo", "GetAchievementInfo",
   "GetAverageItemLevel", "GetCritChance", "GetHaste", "GetMasteryEffect", "GetCombatRatingBonus",
   "GetVersatilityBonus", "C_SpecializationInfo.GetSpecialization", "C_SpecializationInfo.GetSpecializationInfo",
@@ -507,6 +561,24 @@ local USED_APIS = {
   "C_ClassTalents.GetActiveConfigID", "C_Traits.ConfigHasStagedChanges", "C_Traits.GetConfigInfo",
   "C_Traits.GetTreeNodes", "C_Traits.GetNodeInfo", "C_Traits.GenerateImportString",
   "C_CurrencyInfo.GetCurrencyListSize", "C_CurrencyInfo.GetCurrencyListInfo",
+  "C_QuestLog.GetLogIndexForQuestID", "C_QuestLog.GetQuestDifficultyLevel",
+  "C_Weather.GetCurrentWeather", "C_DateAndTime.IsDayTime", "GetInventoryItemDurability",
+  -- money: the calls that move it, and what each states
+  "GetNumLootItems", "GetLootSlotType", "C_Container.GetContainerItemInfo", "C_MerchantFrame.SellAllJunkItems",
+  "BuybackItem", "GetBuybackItemInfo", "GetNumBuybackItems", "TakeTaxiNode", "TaxiNodeCost", "GetTrainerServiceCost",
+  "ConfirmTalentWipe", "GetQuestReward", "GetQuestMoneyToGet", "C_GossipInfo.SelectOption",
+  "SendMail", "GetSendMailMoney", "GetSendMailPrice", "TakeInboxMoney", "AutoLootMailItem", "TakeInboxItem",
+  "GetInboxNumItems", "GetInboxHeaderInfo", "GetInboxInvoiceInfo",
+  "C_AuctionHouse.PostItem", "C_AuctionHouse.ConfirmPostItem", "C_AuctionHouse.PostCommodity",
+  "C_AuctionHouse.ConfirmPostCommodity", "C_AuctionHouse.CalculateItemDeposit", "C_AuctionHouse.CalculateCommodityDeposit",
+  "C_Item.GetItemID", "C_AuctionHouse.PlaceBid", "C_AuctionHouse.ConfirmCommoditiesPurchase",
+  "C_AuctionHouse.CancelAuction", "C_AuctionHouse.GetCancelCost",
+  "DepositGuildBankMoney", "WithdrawGuildBankMoney", "BuyGuildBankTab", "GetGuildBankTabCost",
+  "C_Bank.DepositMoney", "C_Bank.WithdrawMoney", "C_Bank.PurchaseBankTab", "C_Bank.FetchNextPurchasableBankTabData",
+  "C_TransmogOutfitInfo.CommitAndApplyAllPending", "C_TransmogOutfitInfo.GetPendingTransmogCost",
+  "C_BarberShop.ApplyCustomizationChoices", "C_BarberShop.GetCurrentCost", "C_ItemUpgrade.UpgradeItem",
+  "C_CraftingOrders.PlaceNewOrder", "C_BlackMarket.ItemPlaceBid", "BuyGuildCharter", "GetGuildCharterCost",
+  "C_StableInfo.BuyStableSlot", "C_StableInfo.GetNextStableSlotCost",
 }
 
 local function lookup(path)
@@ -528,18 +600,11 @@ function WJ.printClientCheck()
     if type(lookup(path)) ~= "function" then missing[#missing + 1] = path end
   end
   print(PREFIX .. "missing functions: " .. (#missing > 0 and table.concat(missing, ", ") or "none"))
+  local formats = WJ.missingFormatNames and WJ.missingFormatNames() or {}
+  print(PREFIX .. "missing messages: " .. (#formats > 0 and table.concat(formats, ", ") or "none"))
   local events = WJ.unregisteredEvents or {}
   print(PREFIX .. "missing events: " .. (#events > 0 and table.concat(events, ", ") or "none"))
   if WJ.savesNotLoaded then print(PREFIX .. "the game didn't load the recording file at the last reload.") end
-end
-
-local function estimateBytes()
-  local total = 0
-  for _, s in ipairs(db.sessions) do
-    for _, c in ipairs(s.chunks) do total = total + #c end
-  end
-  for _, l in ipairs(buffer) do total = total + #l end
-  return total
 end
 
 local function describeSize(bytes)
@@ -572,6 +637,7 @@ local HELP = {
   { "", "shows what has been recorded so far." },
   { "help", "shows this list." },
   { "about", "says what " .. WJ.NAME .. " is." },
+  { "size", "says how big the recording is, and which sessions are the largest." },
   { "pause", "stops recording until you resume, log in again or reload." },
   { "resume", "starts recording again." },
   { "save", "reloads the interface, which writes the recording to disk." },
@@ -593,11 +659,29 @@ local function printCommands(list)
   end
 end
 
+-- /widsith size: the whole file, the largest sessions, and this one.
+local function printSize()
+  print(format("%s%s on file, %s in all. The game writes the whole file at every logout and reload.",
+    PREFIX, count(#db.sessions, "session", "sessions"), describeSize(estimateBytes())))
+  local sizes = {}
+  for i, s in ipairs(db.sessions) do sizes[#sizes + 1] = { n = i, s = s, bytes = estimateBytes(s) } end
+  table.sort(sizes, function(a, b) return a.bytes > b.bytes end)
+  for i = 1, math.min(3, #sizes) do
+    local e = sizes[i]
+    local started = date and date("%Y-%m-%d", e.s.startedAt or 0) or ""
+    print(format("%s  session %d: %s, %s, started %s%s", PREFIX, e.n, describeSize(e.bytes),
+      count((e.s.lines or 0) + (e.s == session and #buffer or 0), "line", "lines"),
+      tostring(started), e.s == session and " (this one)" or ""))
+  end
+end
+
 local function handleCommand(msg)
   local typed = msg:match("^(%S*)")
   local cmd = typed:lower()
   if cmd == "" then
     printStatus()
+  elseif cmd == "size" then
+    printSize()
   elseif cmd == "help" then
     printCommands(HELP)
     if WJ.debug then

@@ -2,6 +2,17 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
+## 0.5.0 · 2026-10-29
+
+- Other players are named. A buff another player casts on you records who cast it, and a death at another player's hands records who dealt each hit, as the game names them. Group members and trade partners were already named; this makes the recording consistent.
+- The character sheet is never recorded while a fight hides part of it. The line waits for the fight to end, instead of being written with its attributes empty.
+- `/widsith size` says how big the recording is and which sessions are the largest, and each session's opening line records the file's size before it.
+- Each loot line says which message it came from: loot from a corpse or container, an item the game put in your bags, something you crafted, a bonus roll or a refund. It also keeps the item exactly as the game linked it, so an upgrade step no longer looks like the item dropping again.
+- Quests are recorded whole: every objective is listed the moment you accept a quest, the game's own "ready to turn in" is recorded when it happens, and a quest that was already finished when you logged in is recorded as such.
+- Each change to your gold records why it happened whenever the game says, from loot and quest rewards to vendors, flights, the mailbox and the auction house, along with the window you had open. Quests also record their level when you accept them, and the members of your group are recorded with their levels.
+- Gear is recorded as the game links it, with its enchant, gems, suffix and upgrade, not only by item ID, so the site can show the piece you actually wore.
+- More of what happens around you is recorded: the weather and, on WoW Forever, the turn from day to night, how worn your gear is and the moment a piece breaks, the duels you win or lose, your own rolls and your choices in group loot rolls, and how long each loading screen took.
+
 ## 0.4.7 · 2026-10-29
 
 - Ready for WoW Forever's launch: the addon is marked for the released client (1.60.1) as well as for Retail 12.1.5, so either game loads it with no "out of date" warning. What it records is unchanged since 0.4.6.

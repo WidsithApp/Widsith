@@ -249,8 +249,10 @@ end
 ---------------------------------------------------------------------------
 -- RECAP: the hits that ended a life, as the game's own death recap lists
 -- them (C_DeathRecap, what the "Recap" button on the release dialog shows):
--- newest first, each with what it was, how much, the overkill, and the health
--- the character had before it. One line per hit, written with the DEATH.
+-- newest first, each with what it was, how much, the overkill, the health
+-- the character had before it, and who dealt it, by GUID and by the name the
+-- recap gives, a creature's or another player's alike. One line per hit,
+-- written with the DEATH.
 --
 -- The recap is announced in the system channel as a link, "[You died.]",
 -- carrying its ID, just before PLAYER_DEAD. That ID asks for exactly this
@@ -288,7 +290,7 @@ function WJ.onDeath()
     local hit = readable(hits[i])
     if hit then
       write("RECAP", i, #hits, maxHealth, hit.event, hit.spellId, hit.school, hit.amount, hit.overkill,
-        hit.currentHP, hit.timestamp, hit.sourceGUID, hit.environmentalType, hit.spellName)
+        hit.currentHP, hit.timestamp, hit.sourceGUID, hit.environmentalType, hit.spellName, hit.sourceName)
     end
   end
 end
@@ -353,9 +355,23 @@ local function auraCall(name, ...)
   return answer, false
 end
 
--- Who cast it, as far as that is ours to say: nothing for the character's
--- own, a creature's or pet's GUID in full, and for another player only that
--- it was a player.
+-- Another player's name from their GUID, as the game knows it: "Name", or
+-- "Name-Realm" for one from another realm, the form a group member is
+-- written in. Nothing for a creature, and nothing when the game can't say:
+-- GetPlayerInfoByGUID may answer nothing for a player it hasn't met.
+local function playerName(guid)
+  if type(GetPlayerInfoByGUID) ~= "function" or not guid:find("^Player%-") then return nil end
+  local ok, _, _, _, _, _, name, realm = pcall(GetPlayerInfoByGUID, guid)
+  if not ok then return nil end
+  name, realm = plain(name), plain(realm)
+  if type(name) ~= "string" or name == "" then return nil end
+  if type(realm) == "string" and realm ~= "" then return name .. "-" .. realm end
+  return name
+end
+
+-- Who cast it: nothing for the character's own; otherwise the caster's GUID
+-- in full, a creature's, a pet's or another player's alike, and for a player
+-- their name as well, when the game can give it.
 local function auraCaster(aura, own)
   if own then return nil end
   local instance = plain(aura.auraInstanceID)
@@ -363,8 +379,7 @@ local function auraCaster(aura, own)
   if askSecrets("ShouldUnitAuraInstanceBeSecret", "player", instance) == true then return nil end
   local guid = plain((auraCall("GetAuraCasterGUID", "player", instance)))
   if type(guid) ~= "string" then return nil end
-  if guid:find("^Player%-") then return "Player" end
-  return guid
+  return guid, playerName(guid)
 end
 
 -- how: "gain" for one the game has just announced, "has" for one found already there.
