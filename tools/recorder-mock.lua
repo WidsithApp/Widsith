@@ -201,7 +201,18 @@ function UnitIsAFK() if afkHidden then return SECRET end return false end
 -- The character's gear by slot; an empty slot answers nil.
 local inventory = {}
 function GetInventoryItemID(_, slot) return inventory[slot] end
-C_QuestLog = setmetatable({ GetNumQuestLogEntries = function() return 0 end }, { __index = function() return nothing end })
+-- The quest log: entries with objectives, and whether each is ready to turn in. Quest 200 is in
+-- the log from the first session, already finished; quest 100 is accepted and played in a scene.
+local questLog = { { questID = 200, title = "An Old Errand", ready = true,
+  objectives = { { numFulfilled = 1, numRequired = 1, type = "item", text = "Old Letter" } } } }
+local function questByID(id) for _, q in ipairs(questLog) do if q.questID == id then return q end end end
+C_QuestLog = setmetatable({
+  GetNumQuestLogEntries = function() return #questLog end,
+  GetInfo = function(i) local q = questLog[i] return q and { questID = q.questID, title = q.title, isHeader = false, isHidden = false } end,
+  GetQuestObjectives = function(id) local q = questByID(id) return q and q.objectives end,
+  GetTitleForQuestID = function(id) local q = questByID(id) return q and q.title end,
+  ReadyForTurnIn = function(id) local q = questByID(id) return q ~= nil and q.ready == true end,
+}, { __index = function() return nothing end })
 C_Map = setmetatable({ GetBestMapForUnit = function() return nil end }, { __index = function() return nothing end })
 ERR_ZONE_EXPLORED = "Discovered: %s"
 ERR_ZONE_EXPLORED_XP = "Discovered %s: %d experience gained"
@@ -445,6 +456,25 @@ fire("UNIT_AURA", "player", { removedAuraInstanceIDs = { 115, 999 } })
 fire("UNIT_AURA", "player", { addedAuras = { { name = "Blessing of Might", spellId = 19740, isHelpful = true, duration = 3600, applications = 0, auraInstanceID = 133 } } })
 -- a buff from a player the game can't name (GetPlayerInfoByGUID answers nothing for them)
 fire("UNIT_AURA", "player", { addedAuras = { { name = "Arcane Intellect", spellId = 1459, isHelpful = true, duration = 1800, applications = 0, auraInstanceID = 134 } } })
+-- a quest accepted with two objectives, one advanced, both met (ready to turn in), handed in
+questLog[#questLog + 1] = { questID = 100, title = "Boars and a Key", ready = false, objectives = {
+  { numFulfilled = 0, numRequired = 8, type = "monster", text = "Boar slain" },
+  { numFulfilled = 0, numRequired = 1, type = "item", text = "Rusty Key" } } }
+fire("QUEST_ACCEPTED", 100)
+advance(2)
+questLog[2].objectives[1].numFulfilled = 3
+fire("UNIT_QUEST_LOG_CHANGED", "player")
+advance(1)
+questLog[2].objectives[1].numFulfilled = 8
+questLog[2].objectives[2].numFulfilled = 1
+questLog[2].ready = true
+fire("UNIT_QUEST_LOG_CHANGED", "player")
+advance(1)
+fire("QUEST_TURNED_IN", 100, 250, 1200)
+table.remove(questLog, 2)
+fire("QUEST_REMOVED", 100)
+fire("UNIT_QUEST_LOG_CHANGED", "player")
+advance(1)
 fire("MIRROR_TIMER_START", "BREATH", 60000, 60000, -1, 0, "Breath")
 advance(4)
 fire("CHAT_MSG_SYSTEM", "Discovered Crystal Lake: 65 experience gained")
@@ -917,6 +947,23 @@ expect(lootIs("999", "1", "", "", "item:999::::::::1:::::::"), "a wording no for
 expect(lootByItem["4321"] == nil, "another player's loot was written")
 expect(lootIs("268213", "1", "", "item", "item:268213::::::::80:577::6:5:6652:10353:10254:1527:10255::::::"),
   "an upgraded item's link wasn't kept whole")
+-- Quests: the objectives listed at accept, progress as it comes, QDONE once when the game says
+-- ready, and a quest already ready as a session begins written as the opening state.
+local questLines, doneOpening = {}, 0
+for _, session in ipairs(WidsithDB.sessions) do
+  for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local f = {}
+    for v in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = v end
+    if f[2] == "QPROG" and f[3] == "100" then questLines[#questLines + 1] = "P" .. f[4] .. ":" .. f[5] .. "/" .. f[6] end
+    if f[2] == "QDONE" and f[3] == "100" then questLines[#questLines + 1] = "D" .. (f[4] or "") end
+    if f[2] == "QDONE" and f[3] == "200" then
+      if f[4] == "1" then doneOpening = doneOpening + 1 else questLines[#questLines + 1] = "D200" end
+    end
+  end
+end
+expect(table.concat(questLines, " ") == "P1:0/8 P2:0/1 P1:3/8 P1:8/8 P2:1/1 D",
+  "the quest's lines aren't the list at accept, the progress, then one QDONE: " .. table.concat(questLines, " "))
+expect(doneOpening == #WidsithDB.sessions, "a quest already ready wasn't written as the opening state of every session (" .. doneOpening .. " of " .. #WidsithDB.sessions .. ")")
 expect(recapNamed, "a recap's hit from a player wasn't written with their GUID and the recap's name")
 expect(blessingNamed, "an aura cast by a player wasn't written with their GUID and name")
 expect(intellectUnnamed, "an aura whose caster the game can't name wasn't written with the GUID alone")

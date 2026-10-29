@@ -271,6 +271,29 @@ end
 
 -- Objective cache for QPROG diffs: objectives[questID][index] = numFulfilled
 local objectives = {}
+-- Whether the game last said each quest was ready to turn in: ready[questID] = true/false
+local ready = {}
+
+-- Whether the game says the quest is ready to turn in: every objective met,
+-- counted or not (an escort, a delivery, a talk has no count to watch).
+-- ReadyForTurnIn where the client has it, else the older IsComplete; nil
+-- when neither answers.
+local function questReady(questID)
+  local ask = C_QuestLog.ReadyForTurnIn or C_QuestLog.IsComplete
+  if type(ask) ~= "function" then return nil end
+  local ok, answer = pcall(ask, questID)
+  if not ok or (issecretvalue and issecretvalue(answer)) then return nil end
+  return answer == true
+end
+
+-- A quest's objectives as they stand when it enters the log: one QPROG each,
+-- so a reader has the whole list from the start. A count of 0 is an objective
+-- listed, not progress.
+local function writeObjectiveList(questID, list)
+  for idx, o in ipairs(list) do
+    write("QPROG", questID, idx, o.fulfilled, o.required, o.type, o.text)
+  end
+end
 
 local function readObjectives(questID)
   local list = C_QuestLog.GetQuestObjectives(questID)
@@ -296,8 +319,13 @@ function WJ.writeQuestLabels()
 end
 
 -- Diff the whole log against the cache. Emits QPROG for every changed
--- objective. Sub-millisecond even with a full log (0.1–0.3 ms measured).
-local function diffQuestLog(silent)
+-- objective, the whole list for a quest new to the log, and QDONE when the
+-- game first says a quest is ready to turn in. Sub-millisecond even with a
+-- full log (0.1–0.3 ms measured). A silent pass seeds the cache and writes
+-- no progress: the seed two seconds after entering the world, and the one
+-- with the opening snapshot, which alone also writes the quests already
+-- ready, marked as the state the session began in.
+local function diffQuestLog(silent, opening)
   local seen = {}
   local n = C_QuestLog.GetNumQuestLogEntries()
   local quests, changes = 0, 0
@@ -320,7 +348,17 @@ local function diffQuestLog(silent)
             changes = changes + 1
           end
         end
+      elseif not silent then
+        -- In the log without an accept of its own (shared, or taken on by the game).
+        writeObjectiveList(questID, now)
+        changes = changes + #now
       end
+      -- The opening pass states what is ready, whatever an earlier session of this load knew
+      -- (a session resumed after a pause opens with the same baseline as a reload).
+      local isReady = questReady(questID)
+      if isReady and opening then write("QDONE", questID, 1)
+      elseif isReady and not silent and not ready[questID] then write("QDONE", questID) end
+      ready[questID] = isReady == true
       if WJ.debug and not silent then
         local parts = {}
         for idx, o in ipairs(now) do
@@ -332,7 +370,7 @@ local function diffQuestLog(silent)
     end
   end
   for questID in pairs(objectives) do
-    if not seen[questID] then objectives[questID] = nil end
+    if not seen[questID] then objectives[questID], ready[questID] = nil, nil end
   end
   if WJ.debug and not silent then
     print(string.format("|cff8888ffWJ qlog|r diff: %d entries, %d quests, %d changes", n, quests, changes))
@@ -366,18 +404,25 @@ handlers.QUEST_ACCEPTED = function(questID)
   local title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(questID)
   write("QACCEPT", questID, giverGUID(), title)
   counts.quests = counts.quests + 1
-  objectives[questID] = readObjectives(questID)
+  -- Its objectives, listed at once; a quest the game hands over already
+  -- finished is ready from this moment.
+  local list = readObjectives(questID)
+  writeObjectiveList(questID, list)
+  objectives[questID] = list
+  local isReady = questReady(questID)
+  if isReady then write("QDONE", questID) end
+  ready[questID] = isReady == true
 end
 
 handlers.QUEST_TURNED_IN = function(questID, xpReward, moneyReward)
   write("QTURNIN", questID, xpReward, moneyReward, giverGUID())
   counts.quests = counts.quests + 1
-  objectives[questID] = nil
+  objectives[questID], ready[questID] = nil, nil
 end
 
 handlers.QUEST_REMOVED = function(questID)
   write("QREMOVE", questID)
-  objectives[questID] = nil
+  objectives[questID], ready[questID] = nil, nil
 end
 
 ---------------------------------------------------------------------------

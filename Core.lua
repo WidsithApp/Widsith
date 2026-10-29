@@ -403,6 +403,9 @@ end
 function WJ.openingState()
   WJ.snapshot()
   if WJ.writeQuestLabels then WJ.writeQuestLabels() end
+  -- The quest log's state as the session begins (Events.lua): the cache seeded, the quests
+  -- already ready to turn in written as such.
+  if WJ.diffQuestLog then WJ.diffQuestLog(true, true) end
   if WJ.writeOpeningExtras then WJ.writeOpeningExtras() end
   -- Guarded on its own: whatever goes wrong there is named, and nothing above depends on it.
   if WJ.writeOpeningMoments then WJ.guard("openingMoments", WJ.writeOpeningMoments)() end
@@ -500,7 +503,7 @@ end)
 local USED_APIS = {
   "C_Map.GetBestMapForUnit", "C_Map.GetPlayerMapPosition", "C_Map.GetMapInfo", "C_Map.GetWorldPosFromMapPos",
   "UnitPosition", "C_QuestLog.GetNumQuestLogEntries", "C_QuestLog.GetInfo", "C_QuestLog.GetQuestObjectives",
-  "C_QuestLog.GetTitleForQuestID", "RequestTimePlayed", "ChatFrame_DisplayTimePlayed", "GetLootSourceInfo",
+  "C_QuestLog.GetTitleForQuestID", "C_QuestLog.ReadyForTurnIn", "C_QuestLog.IsComplete", "RequestTimePlayed", "ChatFrame_DisplayTimePlayed", "GetLootSourceInfo",
   "C_Item.GetItemQualityByID", "C_Item.GetItemInfo", "C_MountJournal.GetMountFromSpell",
   "C_Reputation.GetFactionDataByID", "C_Reputation.GetNumFactions", "C_Reputation.GetFactionDataByIndex", "GetProfessions", "GetProfessionInfo", "GetAchievementInfo",
   "GetAverageItemLevel", "GetCritChance", "GetHaste", "GetMasteryEffect", "GetCombatRatingBonus",
