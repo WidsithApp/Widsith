@@ -209,7 +209,7 @@ end
 handlers.PLAYER_LEVEL_UP = function(level, ...)
   write("LEVEL", level, ...)
   -- Stats and UnitLevel() update after the event; snapshot once they have.
-  C_Timer.After(1, WJ.guard("levelSnapshot", WJ.snapshot))
+  C_Timer.After(1, WJ.guard("levelSnapshot", function() WJ.snapshot() end))
 end
 
 -- MONEY is written in its own section below, with the reason for each change.
@@ -562,42 +562,66 @@ local LOOT_FORMATS = {
   { "LOOT_ITEM_BONUS_ROLL_SELF_MULTIPLE", "bonus" }, { "LOOT_ITEM_BONUS_ROLL_SELF", "bonus" },
   { "LOOT_ITEM_REFUND_MULTIPLE", "refund" },         { "LOOT_ITEM_REFUND", "refund" },
 }
-local lootPatterns          -- { pattern, kind, slots }: slots[n] is "s" (the link) or "d" (the count)
-local missingLootFormats = {}
+local lootPatterns          -- { pattern, kind, slots, args }: slots[n] is "s" (the link) or "d" (the count)
+local missingFormats = {}
 
 -- A format string as a Lua pattern anchored at both ends: "%s" and "%d" (and
 -- their positional forms, "%1$s") become captures; the rest matches literally.
-local function lootPattern(fmt)
-  local slots = {}
-  local body = fmt:gsub("%%%d*%$?([sd])", function(kind)
+-- The captures come in the order they appear in the text, which a positional
+-- format may not keep ("%2$s has fled from %1$s in a duel"): slots[n] says what
+-- the nth capture is, and args[n] which of the format's arguments it fills.
+local function messagePattern(fmt)
+  local slots, args = {}, {}
+  local body = fmt:gsub("%%(%d*)%$?([sd])", function(position, kind)
     slots[#slots + 1] = kind
+    args[#args + 1] = tonumber(position) or #args + 1
     return kind == "s" and "\1" or "\2"
   end)
   body = body:gsub("[%%%(%)%.%+%-%*%?%[%]%^%$]", "%%%0")
   body = body:gsub("\1", "(.-)"):gsub("\2", "(%%d+)")
-  return "^" .. body .. "$", slots
+  return "^" .. body .. "$", slots, args
+end
+
+-- One pattern for each format the client has, in the list's order, each with
+-- the kind its row names; a format the client lacks is noted for /widsith check.
+local function buildPatterns(formats)
+  local out = {}
+  for _, entry in ipairs(formats) do
+    local fmt = _G[entry[1]]
+    if type(fmt) == "string" and fmt ~= "" then
+      local pattern, slots, args = messagePattern(fmt)
+      out[#out + 1] = { pattern = pattern, kind = entry[2], slots = slots, args = args }
+    else
+      missingFormats[#missingFormats + 1] = entry[1]
+    end
+  end
+  return out
+end
+
+-- A message's values by the format's argument numbers (values[1] is what the
+-- format's first argument was), or nothing when the message isn't that format.
+local function messageArgs(p, msg)
+  local captures = { msg:match(p.pattern) }
+  if captures[1] == nil then return end
+  local values = {}
+  for i, arg in ipairs(p.args) do values[arg] = captures[i] end
+  return values
 end
 
 local function buildLootPatterns()
-  lootPatterns = {}
-  for _, entry in ipairs(LOOT_FORMATS) do
-    local fmt = _G[entry[1]]
-    if type(fmt) == "string" and fmt ~= "" then
-      local pattern, slots = lootPattern(fmt)
-      lootPatterns[#lootPatterns + 1] = { pattern = pattern, kind = entry[2], slots = slots }
-    else
-      missingLootFormats[#missingLootFormats + 1] = entry[1]
-    end
-  end
+  lootPatterns = buildPatterns(LOOT_FORMATS)
 end
 
-local buildMoneyPatterns   -- the money messages' patterns, built the same way (the money section)
+-- The other messages' patterns, built the same way in their own sections.
+local buildMoneyPatterns, buildRollPatterns, buildSystemPatterns
 
 -- The format strings this client lacks, for /widsith check.
-function WJ.missingLootFormatNames()
+function WJ.missingFormatNames()
   if not lootPatterns then buildLootPatterns() end
   buildMoneyPatterns()
-  return missingLootFormats
+  buildRollPatterns()
+  buildSystemPatterns()
+  return missingFormats
 end
 
 -- The kind of a loot message and the count it names, or nothing for a
@@ -634,12 +658,51 @@ handlers.LOOT_OPENED = function()
   lootWindow.time, lootWindow.items = GetTime(), items
 end
 
+-- The character's own choices in a group loot roll, and the rolls it won:
+-- LOOTROLL choice itemID itemString. The game prints them in the loot channel
+-- in its own words ("You have selected Need for: %s", "You passed on: %s",
+-- "You won: %s"), which on Retail carry a loot history link around the item
+-- and on WoW Forever before it; the patterns follow whichever the client has.
+-- Each wording is the character's own, so who sent the message isn't asked:
+-- what the game puts as its sender for a roll isn't documented. Winning
+-- doesn't hand the item over; the loot message that follows writes its LOOT.
+local ROLL_FORMATS = {
+  { "LOOT_ROLL_NEED_SELF", "need" }, { "LOOT_ROLL_GREED_SELF", "greed" },
+  { "LOOT_ROLL_PASSED_SELF", "pass" }, { "LOOT_ROLL_YOU_WON", "won" },
+}
+local rollPatterns
+
+function buildRollPatterns()
+  if not rollPatterns then rollPatterns = buildPatterns(ROLL_FORMATS) end
+end
+
+-- Writes the line and says so when the message is one of the rolls.
+local function noteLootRoll(msg)
+  buildRollPatterns()
+  for _, p in ipairs(rollPatterns) do
+    local values = messageArgs(p, msg)
+    if values then
+      -- The item is the format's one "%s"; the numbers beside it are the loot history's.
+      local link
+      for i, slot in ipairs(p.slots) do
+        if slot == "s" then link = values[p.args[i]] break end
+      end
+      link = link or ""
+      write("LOOTROLL", p.kind, tonumber(link:match("item:(%d+)")), link:match("|H(item:[^|]+)|h"))
+      return true
+    end
+  end
+  return false
+end
+
 handlers.CHAT_MSG_LOOT = function(msg, _, _, _, _, _, _, _, _, _, _, guid)
   -- The wiki doesn't mark `guid` or the text NeverSecret. A secret one can't be
   -- compared (it throws), so whose loot it was can't be told: skip the line
   -- rather than record a group member's loot as the player's.
-  if issecretvalue and (issecretvalue(guid) or issecretvalue(msg)) then return end
-  if guid ~= playerGUID or type(msg) ~= "string" then return end
+  if type(msg) ~= "string" or secret(msg) then return end
+  -- A roll names an item too, but isn't loot: it writes its own line, never a LOOT.
+  if noteLootRoll(msg) then return end
+  if secret(guid) or guid ~= playerGUID then return end
   local itemID = msg:match("item:(%d+)")
   if not itemID then return end
   itemID = tonumber(itemID)
@@ -664,6 +727,194 @@ handlers.CHAT_MSG_LOOT = function(msg, _, _, _, _, _, _, _, _, _, _, guid)
   if quality == nil then quality = tonumber(msg:match("|cnIQ(%d)")) end
   write("LOOT", itemID, qty, source, quality, kind, itemString)
   counts.loot = counts.loot + 1
+end
+
+---------------------------------------------------------------------------
+-- Duels and /roll, from the system messages the game prints for them in the
+-- client's own words. Everyone nearby sees them, so a line is kept only when
+-- the character is in it.
+---------------------------------------------------------------------------
+
+local alsoEvents = {}     -- joined to the handlers at registration, as the money ones are
+
+-- Whether a name a message gives is the character's own. On WoW Forever a
+-- message may give the surname after the name: the first word must be the
+-- character's name, and the rest, if any, the character's surname when the
+-- game gives one, so a namesake with another surname isn't taken for them.
+local function isCharacter(name)
+  name = plainString(name)
+  if not name then return false end
+  local own, surname = UnitName("player")
+  own, surname = plainString(own), plainString(surname)
+  if not own then return false end
+  local first, rest = name:match("^(%S+)%s*(.-)$")
+  if first ~= own then return false end
+  return rest == "" or surname == nil or rest == surname
+end
+
+local SYSTEM_FORMATS = {
+  { "DUEL_WINNER_KNOCKOUT", "knockout" }, { "DUEL_WINNER_RETREAT", "retreat" },
+  { "RANDOM_ROLL_RESULT", "roll" },
+}
+local systemPatterns
+
+function buildSystemPatterns()
+  if not systemPatterns then systemPatterns = buildPatterns(SYSTEM_FORMATS) end
+end
+
+-- DUEL outcome winner loser. Both duel messages give the winner as their first
+-- argument and the loser as their second, whatever order the wording puts them
+-- in ("%2$s has fled from %1$s in a duel"). Names as the message gives them.
+local DUEL_WAIT = 2       -- s between the game's end of a duel and the message that explains it, either way round
+local duelExplainedAt = -math.huge
+local duelWaiting = false
+
+local function noteDuel(outcome, winner, loser)
+  if not (isCharacter(winner) or isCharacter(loser)) then return end
+  duelExplainedAt = GetTime()
+  write("DUEL", outcome, winner, loser)
+end
+
+-- ROLL result min max: the character's own /roll.
+local function noteRoll(name, result, low, high)
+  if isCharacter(name) then write("ROLL", tonumber(result), tonumber(low), tonumber(high)) end
+end
+
+alsoEvents.CHAT_MSG_SYSTEM = function(text)
+  -- The text is hidden under the game's chat lockdown.
+  if type(text) ~= "string" or secret(text) then return end
+  buildSystemPatterns()
+  for _, p in ipairs(systemPatterns) do
+    local values = messageArgs(p, text)
+    if values then
+      if p.kind == "roll" then
+        noteRoll(values[1], values[2], values[3], values[4])
+      else
+        noteDuel(p.kind, values[1], values[2])
+      end
+      return
+    end
+  end
+end
+
+-- The game's own end of the character's duel, which doesn't say who won. When
+-- no message explains it within two seconds either side (under chat lockdown
+-- the message can't be read), the duel is written as finished with no names,
+-- two seconds after its end.
+handlers.DUEL_FINISHED = function()
+  local finishedAt = GetTime()
+  if duelWaiting or finishedAt - duelExplainedAt <= DUEL_WAIT then return end
+  duelWaiting = true
+  C_Timer.After(DUEL_WAIT, WJ.guard("duel", function()
+    duelWaiting = false
+    if duelExplainedAt >= finishedAt then return end
+    write("DUEL", "finished", "", "")
+  end))
+end
+
+---------------------------------------------------------------------------
+-- Gear wear. Every SNAP lists each worn slot's durability (WJ.durabilityList),
+-- and BROKEN slot itemID is written when a worn item's durability reaches
+-- zero. UPDATE_INVENTORY_DURABILITY has no payload and fires over and over in
+-- a fight, so it never reads at once: it marks a read as due, and a single
+-- pass reads every slot five seconds later, so there is at most one pass in
+-- five seconds and a BROKEN line is up to five seconds late. A repair raises
+-- the values and writes nothing here: REPAIR records it.
+---------------------------------------------------------------------------
+
+local EQUIP_SLOTS = WJ.EQUIP_SLOTS   -- the worn slots, in SNAP's order
+local WEAR_WAIT = 5
+local wearItem, wearValue = {}, {}   -- each slot's item and durability as last read
+local wearDue = false
+
+-- A worn slot's durability, current and maximum; nothing for an empty slot or
+-- an item that has none, and hidden when the game hides either value.
+-- GetInventoryItemDurability takes the slot alone: it reads the player's gear.
+local function slotWear(slot)
+  local current, maximum = ask("GetInventoryItemDurability", slot)
+  if secret(current) or secret(maximum) then return nil, nil, true end
+  return plainNumber(current), plainNumber(maximum), false
+end
+
+local function slotItem(slot)
+  return plainNumber((ask("GetInventoryItemID", "player", slot)))
+end
+
+-- SNAP's durability field: "current/max" for each slot in turn, an empty entry
+-- for a slot with none. The opening snapshot's read is where watching for a
+-- break starts, so gear already broken as a session opens writes no BROKEN.
+function WJ.durabilityList(seed)
+  local entries = {}
+  for slot = 1, EQUIP_SLOTS do
+    local current, maximum, hidden = slotWear(slot)
+    entries[slot] = (current and maximum) and (WJ.field(current) .. "/" .. WJ.field(maximum)) or ""
+    if seed then wearItem[slot], wearValue[slot] = slotItem(slot), (not hidden) and current or nil end
+  end
+  return table.concat(entries, ",")
+end
+
+local readWear = WJ.guard("durability", function()
+  wearDue = false
+  for slot = 1, EQUIP_SLOTS do
+    local current, _, hidden = slotWear(slot)
+    if not hidden then
+      local item = slotItem(slot)
+      -- The same item, above zero at the last read and at zero now: another
+      -- item put on already broken is no break.
+      if current == 0 and item ~= nil and item == wearItem[slot] and (wearValue[slot] or 0) > 0 then
+        write("BROKEN", slot, item)
+      end
+      wearItem[slot], wearValue[slot] = item, current
+    end
+  end
+end)
+
+handlers.UPDATE_INVENTORY_DURABILITY = function()
+  if wearDue then return end
+  wearDue = true
+  C_Timer.After(WEAR_WAIT, readWear)
+end
+
+---------------------------------------------------------------------------
+-- Weather and daylight. WEATHER type intensity: the weather where the
+-- character is, from C_Weather.GetCurrentWeather() at WEATHER_CHANGED (no
+-- payload), its type as the game numbers it (Enum.WeatherType: 0 clear, 1
+-- rain, 2 snow, 3 sandstorm, 4 miscellaneous) and its intensity as given; a
+-- line only when either differs from the last one written. DAYLIGHT isDay: 1
+-- when the game's clock turns to day, 0 to night, from
+-- DIEL_CYCLE_CHANGED(isDayTime). Both are also written with the opening
+-- snapshot, when the client answers. C_DateAndTime.IsDayTime() and
+-- DIEL_CYCLE_CHANGED are in WoW Forever's API (1.60.1) and not in Retail's
+-- (12.1.5), where no DAYLIGHT is written.
+---------------------------------------------------------------------------
+
+local lastWeather, lastDaylight
+
+local function writeWeather(opening)
+  local info = plainTable((ask("C_Weather.GetCurrentWeather")))
+  if not info then return end
+  local kind, intensity = plainNumber(info.type), plainNumber(info.intensity)
+  if kind == nil and intensity == nil then return end
+  local key = WJ.field(kind) .. "/" .. WJ.field(intensity)
+  if key == lastWeather and not opening then return end
+  lastWeather = key
+  write("WEATHER", kind, intensity)
+end
+
+local function writeDaylight(isDay, opening)
+  if type(isDay) ~= "boolean" or secret(isDay) then return end
+  if isDay == lastDaylight and not opening then return end
+  lastDaylight = isDay
+  write("DAYLIGHT", isDay)
+end
+
+handlers.WEATHER_CHANGED = function() writeWeather(false) end
+handlers.DIEL_CYCLE_CHANGED = function(isDayTime) writeDaylight(isDayTime, false) end
+
+-- With the opening snapshot (Core.openingState).
+function WJ.writeOpeningWorld()
+  writeWeather(true)
+  writeDaylight((ask("C_DateAndTime.IsDayTime")), true)
 end
 
 ---------------------------------------------------------------------------
@@ -843,24 +1094,17 @@ local MONEY_FORMATS = {
 local COIN_FORMATS = { { "GOLD_AMOUNT", 10000 }, { "SILVER_AMOUNT", 100 }, { "COPPER_AMOUNT", 1 } }
 local moneyPatterns, coinPatterns
 
-local function buildMoneyPatterns()
+-- Assigned to the name declared with the loot patterns, so /widsith check can build them too.
+function buildMoneyPatterns()
   if moneyPatterns then return end
-  moneyPatterns, coinPatterns = {}, {}
-  for _, entry in ipairs(MONEY_FORMATS) do
-    local fmt = _G[entry[1]]
-    if type(fmt) == "string" and fmt ~= "" then
-      moneyPatterns[#moneyPatterns + 1] = { pattern = (lootPattern(fmt)), kind = entry[2] }
-    else
-      missingLootFormats[#missingLootFormats + 1] = entry[1]
-    end
-  end
+  moneyPatterns, coinPatterns = buildPatterns(MONEY_FORMATS), {}
   for _, entry in ipairs(COIN_FORMATS) do
     local fmt = _G[entry[1]]
     if type(fmt) == "string" and fmt ~= "" then
       -- Unanchored: a coin is one part of the amount.
-      coinPatterns[#coinPatterns + 1] = { pattern = (lootPattern(fmt)):sub(2, -2), copper = entry[2] }
+      coinPatterns[#coinPatterns + 1] = { pattern = (messagePattern(fmt)):sub(2, -2), copper = entry[2] }
     else
-      missingLootFormats[#missingLootFormats + 1] = entry[1]
+      missingFormats[#missingFormats + 1] = entry[1]
     end
   end
 end
@@ -1119,10 +1363,11 @@ function WJ.installMoneyHooks()
   end
 end
 
--- The money handlers join whatever else listens to the same event, each
--- guarded on its own so a fault in one never silences the other.
-local function joinMoneyEvents()
-  for event, fn in pairs(moneyEvents) do
+-- The money handlers, and the others kept apart the same way, join whatever
+-- else listens to the same event, each guarded on its own so a fault in one
+-- never silences the other.
+local function joinEvents(extra)
+  for event, fn in pairs(extra) do
     local first = handlers[event]
     if first then
       local a, b = WJ.guard(event, first), WJ.guard(event, fn)
@@ -1131,7 +1376,12 @@ local function joinMoneyEvents()
       handlers[event] = fn
     end
   end
-  moneyEvents = {}
+end
+
+local function joinSharedEvents()
+  joinEvents(moneyEvents)
+  joinEvents(alsoEvents)
+  moneyEvents, alsoEvents = {}, {}
 end
 
 ---------------------------------------------------------------------------
@@ -1150,7 +1400,7 @@ WJ.unitEvents = {
 -- A client without an event (WoW Forever has no pet battles, for one) throws on
 -- registering it. That family is simply not recorded; /widsith check lists them.
 function WJ.registerEvents(frame)
-  joinMoneyEvents()
+  joinSharedEvents()
   local missing = {}
   for event in pairs(handlers) do
     local unit = WJ.unitEvents[event]
@@ -1187,6 +1437,8 @@ end
 function WJ.onResume()
   currentInstanceMapID = 0
   lastZone, lastSubzone = nil, nil
+  lastWeather, lastDaylight = nil, nil
+  wearItem, wearValue = {}, {}
   WJ.resetPositionForSession()
   if WJ.resetExtrasForSession then WJ.resetExtrasForSession() end
   if WJ.resetMomentsForSession then WJ.resetMomentsForSession() end
