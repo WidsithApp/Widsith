@@ -6,6 +6,13 @@ to read, as Blizzard Entertainment's UI Add-On Development Policy requires.
 No licence to copy, modify, redistribute or create derivative works from it is
 granted without written permission from Reflective Grove LLC.
 
+The official copies of this addon are the ones Reflective Grove LLC publishes:
+at https://widsith.app, in its GitHub repository
+(https://github.com/WidsithApp/Widsith) and on that repository's Releases page,
+and on CurseForge and Wago. A copy obtained anywhere else, or changed from
+those, is not Reflective Grove LLC's. The terms here still bind it, but no
+support is given for it and no responsibility is accepted for what it does.
+
 Using it with the Widsith website is also governed by the Terms of Service and
 the Privacy page at https://widsith.app/terms and https://widsith.app/privacy.
 

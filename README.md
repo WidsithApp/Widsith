@@ -79,6 +79,8 @@ Copyright (c) 2026 Reflective Grove LLC. All rights reserved.
 
 Widsith is free to download and use, and its source is open for anyone to read, as Blizzard's addon policy requires. It may not be copied, changed or redistributed without written permission. The terms are in `LICENSE.txt` and at [widsith.app/licence](https://widsith.app/licence).
 
+The official copies are the ones published at widsith.app, in this repository and on its Releases page, and on CurseForge and Wago. A copy from anywhere else, or a changed one, isn't ours: we can't support it and aren't responsible for what it does.
+
 World of Warcraft is a trademark of Blizzard Entertainment, Inc. Widsith is a fan project and is not made, endorsed or supported by Blizzard Entertainment.
 
 ## Contact
