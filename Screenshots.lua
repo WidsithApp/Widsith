@@ -8,8 +8,9 @@
 -- the player's.
 --
 -- For the length of one of its own shots the addon hides chat, whispers
--- included, and draws a small mark in the very corner of the screen, worked out
--- from the character, the session and the second. The game answers within about
+-- included, and the social windows, where friends' real names can show, and
+-- draws a small mark in the very corner of the screen, worked out from the
+-- character, the session and the second. The game answers within about
 -- a tenth of a second and both go back. Chat frames aren't protected, so this
 -- works in combat. What is hidden is made transparent rather than hidden, which
 -- would disturb how the windows are docked.
@@ -38,12 +39,15 @@ local MOMENTS = {
 local MARK_PATCHES, MARK_PIXELS = 4, 2   -- four patches, 2 by 2 pixels, each one of 64 colours
 local MARK_LEVELS = { 0, 85 / 255, 170 / 255, 1 }
 
--- The parts Blizzard's code moves together with chat, and the pop-ups beside it.
+-- The parts Blizzard's code moves together with chat, the pop-ups beside it,
+-- and the social windows: the friends list with its tooltip and friends-of-
+-- friends dialog, and the guild and communities window, which carries chat.
 local CHAT_WINDOW_PARTS = { "", "Tab", "EditBox", "ButtonFrame", "Minimized" }
 local CHAT_SHARED_PARTS = {
   "GeneralDockManager", "ChatMenu", "TextToSpeechButtonFrame", "QuickJoinToastButton",
   "ChatFrameMenuButton", "ChatFrameChannelButton", "ChatFrameToggleVoiceDeafenButton",
   "ChatFrameToggleVoiceMuteButton", "ChatAlertFrame", "BNToastFrame",
+  "FriendsFrame", "FriendsTooltip", "FriendsFriendsFrame", "CommunitiesFrame",
 }
 
 local pending          -- the moment waiting for its picture

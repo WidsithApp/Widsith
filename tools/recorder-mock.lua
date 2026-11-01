@@ -606,16 +606,19 @@ WidsithUI = WidsithUI or {}
 CHAT_FRAMES = { "ChatFrame1" }
 ChatFrame1 = CreateFrame()
 ChatFrame1.alpha = 0.8
+FriendsFrame = CreateFrame()
+FriendsFrame.alpha = 1
 function widget:GetAlpha() return self.alpha or 1 end
 function widget:SetAlpha(value) self.alpha = value end
 function widget:GetEffectiveScale() return 1 end
 function widget:CreateTexture() return setmetatable({}, widget) end
 function GetPhysicalScreenSize() return 1280, 768 end
 local shotAnswer = "SCREENSHOT_SUCCEEDED"
-local shotsTaken, chatAtShot = 0, nil
+local shotsTaken, chatAtShot, friendsAtShot = 0, nil, nil
 function Screenshot()
   shotsTaken = shotsTaken + 1
   chatAtShot = ChatFrame1.alpha
+  friendsAtShot = FriendsFrame.alpha
   if shotAnswer then fire(shotAnswer) end
 end
 local function bigExpect(ok, what) if not ok then realPrint("-- expect FAIL: " .. what) end end
@@ -641,6 +644,8 @@ advance(2)
 shots(1, "a level")
 bigExpect(chatAtShot == 0, "chat was showing in a highlight's picture")
 bigExpect(ChatFrame1.alpha == 0.8, "chat didn't come back as it was")
+bigExpect(friendsAtShot == 0, "the friends list was showing in a highlight's picture")
+bigExpect(FriendsFrame.alpha == 1, "the friends list didn't come back")
 addonTable.highlightShot("zone", "Westfall")      -- a lesser moment waits out the gap
 advance(4)
 shots(1, "a zone inside the gap")
