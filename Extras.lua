@@ -76,7 +76,7 @@ handlers.UNIT_SPELLCAST_SUCCEEDED = function(unit, castGUID, spellID)
     -- A mount is summoned, not travelled by: never a candidate for SPELL (a
     -- mount called at an instance door would otherwise be named for the load).
     write("MOUNT", spellID, mountID)
-    WJ.bigMoment("mount", "first")
+    WJ.highlightShot("mount", "first")
     return
   end
   local startT
@@ -784,7 +784,7 @@ end
 
 handlers.ENCOUNTER_END = function(encounterID, name, difficultyID, groupSize, success)
   write("ENCOUNTER", "end", encounterID, difficultyID, groupSize, success, name)
-  if not secret(success) and not secret(encounterID) and success == 1 then WJ.bigMoment("boss", encounterID) end
+  if not secret(success) and not secret(encounterID) and success == 1 then WJ.highlightShot("boss", encounterID) end
 end
 
 ---------------------------------------------------------------------------

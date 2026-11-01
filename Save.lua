@@ -586,7 +586,7 @@ local function openMenu(self)
     checkbox("Lock position", "locked")
     checkbox("Show chat messages", "chat")
     checkbox("Emote when saving", "emote")
-    checkbox("Screenshot big moments", "screenshots")
+    checkbox("Screenshot highlights", "screenshots")
     local sizes = root:CreateButton("Icon size")
     for _, entry in ipairs(SIZES) do
       sizes:CreateRadio(entry[2],

@@ -133,7 +133,7 @@ local function createPanel()
   Settings.CreateDropdown(category, sizeSetting, sizeOptions, "Small is the size of the day and night dial beside it.")
 
   layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("The recording"))
-  checkbox("Screenshot big moments", "screenshots", "Takes a screenshot with chat hidden when something big happens, such as a new level, a boss's first defeat or your first time in a zone. The pictures go in your Screenshots folder with a tiny mark in the corner, and your own screenshots aren't touched. Off unless you turn it on.")
+  checkbox("Screenshot highlights", "screenshots", "Takes a screenshot with chat hidden at the highlights of your journey, such as a new level, a boss's first defeat or your first time in a zone. The pictures go in your Screenshots folder with a tiny mark in the corner, and your own screenshots aren't touched. Off unless you turn it on.")
   layout:AddInitializer(CreateSettingsButtonInitializer("Save the recording", "Save now",
     function() if WJ.saveNow then WJ.saveNow() end end,
     "Reloads the interface, which is the only way the game writes the file: a few seconds of loading screen, then you carry on. Not in combat.", true))

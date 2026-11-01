@@ -598,7 +598,7 @@ fire("CHAT_MSG_MONSTER_YELL", SECRET, SECRET)
 -- the player's own /say and /yell: speech is switched off, so nothing may be written
 fire("CHAT_MSG_SAY", "Well met!", "Aldwin", "Common", "", "", "", 0, 0, "", 7, 12, "Player-4747-0ABC1234")
 fire("CHAT_MSG_YELL", "For the Alliance!", "Aldwin", "Common", "", "", "", 0, 0, "", 7, 13, "Player-4747-0ABC1234")
--- big moments: off, a level takes no picture; on, each moment takes one with chat gone and the
+-- highlights: off, a level takes no picture; on, each moment takes one with chat gone and the
 -- mark on, and both put back. What can only have one picture has one. A lesser moment waits out
 -- the gap, a greater one doesn't. A failure or no answer at all still brings chat back. The
 -- player's own screenshot is noted plainly and touches nothing.
@@ -630,9 +630,9 @@ screenshotsOn = true
 fire("PLAYER_LEVEL_UP", 6, 17, 0, 0, 0, 1, 0, 1, 0)
 advance(2)
 shots(1, "a level")
-bigExpect(chatAtShot == 0, "chat was showing in a big moment's picture")
+bigExpect(chatAtShot == 0, "chat was showing in a highlight's picture")
 bigExpect(ChatFrame1.alpha == 0.8, "chat didn't come back as it was")
-addonTable.bigMoment("zone", "Westfall")      -- a lesser moment waits out the gap
+addonTable.highlightShot("zone", "Westfall")      -- a lesser moment waits out the gap
 advance(4)
 shots(1, "a zone inside the gap")
 fire("ENCOUNTER_END", 77, "Hogger", 1, 5, 1)   -- a greater moment, inside the gap
@@ -652,13 +652,13 @@ advance(4)
 shots(3, "a boss and a level together")
 advance(2)
 shotAnswer = "SCREENSHOT_FAILED"
-addonTable.bigMoment("mount", "first")
+addonTable.highlightShot("mount", "first")
 advance(4)
 shots(4, "a mount")
 bigExpect(ChatFrame1.alpha == 0.8, "a failure left chat hidden")
 advance(2)
 shotAnswer = nil
-addonTable.bigMoment("zone", "Elwynn Forest")
+addonTable.highlightShot("zone", "Elwynn Forest")
 advance(4)
 bigExpect(ChatFrame1.alpha == 0, "the zone's picture should still be waiting on the game")
 advance(3)
@@ -666,8 +666,8 @@ shots(5, "a zone")
 bigExpect(ChatFrame1.alpha == 0.8, "no answer left chat hidden")
 shotAnswer = "SCREENSHOT_SUCCEEDED"
 advance(2)
-addonTable.bigMoment("mount", "first")
-addonTable.bigMoment("zone", "Elwynn Forest")
+addonTable.highlightShot("mount", "first")
+addonTable.highlightShot("zone", "Elwynn Forest")
 advance(4)
 shots(5, "a second first mount and zone")
 fire("PLAYER_DEAD")                 -- a first death has its picture, and only the first
@@ -675,11 +675,11 @@ advance(3)
 shots(6, "a first death")
 fire("PLAYER_ALIVE")
 advance(2)
-addonTable.bigMoment("death", "first")
+addonTable.highlightShot("death", "first")
 advance(3)
 shots(6, "a second death")
 C_GameRules.IsHardcoreActive = function() return true end
-addonTable.bigMoment("death", "first")   -- on a Hardcore realm every death has one
+addonTable.highlightShot("death", "first")   -- on a Hardcore realm every death has one
 advance(3)
 shots(7, "a Hardcore death")
 C_GameRules.IsHardcoreActive = function() return false end

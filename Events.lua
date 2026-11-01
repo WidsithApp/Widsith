@@ -92,7 +92,7 @@ local function writeZoneIfChanged()
   local zone, subzone = GetZoneText(), GetSubZoneText()
   if zone ~= lastZone or subzone ~= lastSubzone then
     write("ZONE", zone, subzone)
-    if zone ~= lastZone and zone ~= "" and not IsInInstance() then WJ.bigMoment("zone", zone) end
+    if zone ~= lastZone and zone ~= "" and not IsInInstance() then WJ.highlightShot("zone", zone) end
     lastZone, lastSubzone = zone, subzone
   end
 end
@@ -211,7 +211,7 @@ handlers.PLAYER_LEVEL_UP = function(level, ...)
   write("LEVEL", level, ...)
   -- Stats and UnitLevel() update after the event; snapshot once they have.
   C_Timer.After(1, WJ.guard("levelSnapshot", function() WJ.snapshot() end))
-  WJ.bigMoment("level")
+  WJ.highlightShot("level")
 end
 
 -- MONEY is written in its own section below, with the reason for each change.
@@ -240,7 +240,7 @@ handlers.PLAYER_DEAD = function()
     deathOutstanding = true
     -- The hits that did it (Moments.lua).
     if WJ.onDeath then WJ.onDeath() end
-    WJ.bigMoment("death", "first")
+    WJ.highlightShot("death", "first")
   end
 end
 
