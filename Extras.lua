@@ -1198,11 +1198,37 @@ end
 
 ---------------------------------------------------------------------------
 -- Screenshots (JUMP and EMOTE are hooks, below)
+--
+-- SHOT: the game saved a screenshot. With the setting on, the addon asks for
+-- one itself a moment after each new level, and that line says why ("level"),
+-- since the addon took it and the player didn't stop to keep a view. The game
+-- says that a screenshot was saved or failed, not who asked for it, so the
+-- reason is held for the one being taken, and let go if no answer comes.
 ---------------------------------------------------------------------------
 
+local LEVEL_SHOT_WAIT = 1.5   -- s; long enough for the level-up's light and the game's banner to be up
+local SHOT_ANSWER = 5         -- s the game has to say the screenshot was saved or failed
+local shotReason
+
 handlers.SCREENSHOT_SUCCEEDED = function()
-  write("SHOT")
+  if shotReason then write("SHOT", shotReason) else write("SHOT") end
+  shotReason = nil
   counts.shots = counts.shots + 1
+end
+
+handlers.SCREENSHOT_FAILED = function()
+  shotReason = nil
+end
+
+-- Paused, nothing is recorded, so nothing is taken either.
+function WJ.onLevelUp()
+  if not WJ.getIconSetting("shotOnLevel") then return end
+  C_Timer.After(LEVEL_SHOT_WAIT, WJ.guard("levelShot", function()
+    if not WJ.isRecording() then return end
+    shotReason = "level"
+    C_Timer.After(SHOT_ANSWER, function() shotReason = nil end)
+    Screenshot()
+  end))
 end
 
 ---------------------------------------------------------------------------

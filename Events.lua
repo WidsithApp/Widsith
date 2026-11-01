@@ -210,6 +210,7 @@ handlers.PLAYER_LEVEL_UP = function(level, ...)
   write("LEVEL", level, ...)
   -- Stats and UnitLevel() update after the event; snapshot once they have.
   C_Timer.After(1, WJ.guard("levelSnapshot", function() WJ.snapshot() end))
+  WJ.onLevelUp()
 end
 
 -- MONEY is written in its own section below, with the reason for each change.
