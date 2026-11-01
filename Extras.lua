@@ -3,7 +3,7 @@
 -- Everything beyond the core journey: travel spells and mounts, reputation,
 -- skills and professions, achievements, gear and the character sheet,
 -- currency, encounters, spec and hearth, gear sets and talents, the guild, trading with NPCs and
--- players, pet battles, and the small things (jumps, screenshots, emotes).
+-- players, pet battles, and the small things (jumps, emotes).
 -- Speech is here too, switched off. Every line here is a fact the game
 -- stated; where a fact is inferred from a consequence (SPELL) the line says
 -- so in a field.
@@ -76,6 +76,7 @@ handlers.UNIT_SPELLCAST_SUCCEEDED = function(unit, castGUID, spellID)
     -- A mount is summoned, not travelled by: never a candidate for SPELL (a
     -- mount called at an instance door would otherwise be named for the load).
     write("MOUNT", spellID, mountID)
+    WJ.highlightShot("mount", "first")
     return
   end
   local startT
@@ -783,6 +784,7 @@ end
 
 handlers.ENCOUNTER_END = function(encounterID, name, difficultyID, groupSize, success)
   write("ENCOUNTER", "end", encounterID, difficultyID, groupSize, success, name)
+  if not secret(success) and not secret(encounterID) and success == 1 then WJ.highlightShot("boss", encounterID) end
 end
 
 ---------------------------------------------------------------------------
@@ -1196,13 +1198,11 @@ if RECORD_SPEECH then
   handlers.CHAT_MSG_YELL = speech("yell")
 end
 
----------------------------------------------------------------------------
--- Screenshots (JUMP and EMOTE are hooks, below)
----------------------------------------------------------------------------
-
-handlers.SCREENSHOT_SUCCEEDED = function()
-  write("SHOT")
-  counts.shots = counts.shots + 1
+function WJ.mapIsOpen()
+  local map = WorldMapFrame
+  if type(map) ~= "table" or type(map.IsShown) ~= "function" then return false end
+  local ok, shown = pcall(map.IsShown, map)
+  return ok and not secret(shown) and shown == true
 end
 
 ---------------------------------------------------------------------------
@@ -1253,15 +1253,9 @@ function WJ.installHooks()
   -- time the map opens, and the map's frame is already shown when the hook sees it. That READ
   -- is the map, not the player, so it is left out; a READ the player chooses with the map
   -- closed is still written.
-  local function mapIsOpen()
-    local map = WorldMapFrame
-    if type(map) ~= "table" or type(map.IsShown) ~= "function" then return false end
-    local ok, shown = pcall(map.IsShown, map)
-    return ok and not secret(shown) and shown == true
-  end
   local function emote(token)
     if type(token) ~= "string" or token == "" then return end
-    if token == "READ" and mapIsOpen() then return end
+    if token == "READ" and WJ.mapIsOpen() then return end
     write("EMOTE", token)
     counts.emotes = counts.emotes + 1
   end
