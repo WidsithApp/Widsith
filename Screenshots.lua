@@ -3,8 +3,9 @@
 -- SHOT: the game saved a screenshot. The player's own are only noted, and
 -- nothing about them changes. With "Screenshot highlights" turned on the addon
 -- also takes some itself: each new level, a boss's first defeat, the first time
--- in a zone, the first mount, the first death, and every death on a Hardcore
--- realm. Those lines say which moment it was, which tells them from the player's.
+-- in a zone or an instance, the first mount, the first death, and every death on
+-- a Hardcore realm. Those lines say which moment it was, which tells them from
+-- the player's.
 --
 -- For the length of one of its own shots the addon hides chat, whispers
 -- included, and draws a small mark in the very corner of the screen, worked out
@@ -19,17 +20,19 @@ local write, counts = WJ.write, WJ.counts
 local handlers = WJ.handlers
 
 WJ.SHOT_GAP = 30         -- s between shots, unless the later moment matters more
-local LOADING_RETRIES = 30   -- s to wait for a loading screen to end before giving a shot up
+local HOLD_LIMIT = 30    -- s a shot can wait for a clear screen before it is given up
 local ANSWER_WAIT = 3    -- s before chat comes back if the game says nothing
 
 -- How long after the moment the picture is taken, and which wins when two fall
--- together: a boss's last blow is often the level-up too.
+-- together: a boss's last blow is often the level-up too. A picture of a place
+-- is about the place, so it holds off while the world map covers it.
 local MOMENTS = {
-  death = { wait = 1,   rank = 5 },
-  boss  = { wait = 2,   rank = 4 },
-  level = { wait = 1.5, rank = 3 },
-  mount = { wait = 3,   rank = 2 },
-  zone  = { wait = 3,   rank = 1 },
+  death    = { wait = 1,   rank = 5 },
+  boss     = { wait = 2,   rank = 4 },
+  level    = { wait = 1.5, rank = 3 },
+  mount    = { wait = 3,   rank = 2 },
+  instance = { wait = 3,   rank = 2, place = true },
+  zone     = { wait = 3,   rank = 1, place = true },
 }
 
 local MARK_PATCHES, MARK_PIXELS = 4, 2   -- four patches, 2 by 2 pixels, each one of 64 colours
@@ -181,15 +184,36 @@ handlers.SCREENSHOT_FAILED = function()
   if taking then putBack() end
 end
 
+-- The zone a map belongs to, walking up from a cave or a town's own small map.
+-- A zone's text can't do this: some small areas name themselves as a zone.
+local function realZone()
+  local mapID = WJ.currentPosition()
+  local zoneType = Enum and Enum.UIMapType and Enum.UIMapType.Zone or 3
+  for _ = 1, 8 do
+    if not mapID or mapID == 0 then return nil end
+    local info = C_Map.GetMapInfo(mapID)
+    if not info then return nil end
+    if info.mapType == zoneType then return mapID end
+    if info.mapType < zoneType then return nil end
+    mapID = info.parentMapID
+  end
+end
+
+local function screenIsBusy(moment)
+  return WJ.loadingScreenUp() or (MOMENTS[moment.why].place and WJ.mapIsOpen())
+end
+
+-- A shot given up here isn't marked as seen, so a later chance can still take it.
 local function whenReady(moment, retries)
   if pending ~= moment then return end
-  if WJ.loadingScreenUp() and retries > 0 then
+  if screenIsBusy(moment) and retries > 0 then
     C_Timer.After(1, WJ.guard("shot", function() whenReady(moment, retries - 1) end))
     return
   end
   pending = nil
   -- Paused, nothing is recorded, so nothing is taken either.
-  if not WJ.isRecording() or taking then return end
+  if not WJ.isRecording() or taking or screenIsBusy(moment) then return end
+  if moment.why == "zone" and realZone() ~= moment.key then return end
   take(moment)
 end
 
@@ -211,5 +235,11 @@ function WJ.highlightShot(why, key)
   if pending and MOMENTS[pending.why].rank >= rank then return end
   local moment = { why = why, key = key }
   pending = moment
-  C_Timer.After(MOMENTS[why].wait, WJ.guard("shot", function() whenReady(moment, LOADING_RETRIES) end))
+  C_Timer.After(MOMENTS[why].wait, WJ.guard("shot", function() whenReady(moment, HOLD_LIMIT) end))
+end
+
+function WJ.zoneChanged()
+  if IsInInstance() then return end
+  local zone = realZone()
+  if zone then WJ.highlightShot("zone", zone) end
 end

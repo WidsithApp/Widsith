@@ -1198,6 +1198,13 @@ if RECORD_SPEECH then
   handlers.CHAT_MSG_YELL = speech("yell")
 end
 
+function WJ.mapIsOpen()
+  local map = WorldMapFrame
+  if type(map) ~= "table" or type(map.IsShown) ~= "function" then return false end
+  local ok, shown = pcall(map.IsShown, map)
+  return ok and not secret(shown) and shown == true
+end
+
 ---------------------------------------------------------------------------
 -- Repair cost is read while the merchant window is open, since the repair
 -- hook runs after the money has already gone.
@@ -1246,15 +1253,9 @@ function WJ.installHooks()
   -- time the map opens, and the map's frame is already shown when the hook sees it. That READ
   -- is the map, not the player, so it is left out; a READ the player chooses with the map
   -- closed is still written.
-  local function mapIsOpen()
-    local map = WorldMapFrame
-    if type(map) ~= "table" or type(map.IsShown) ~= "function" then return false end
-    local ok, shown = pcall(map.IsShown, map)
-    return ok and not secret(shown) and shown == true
-  end
   local function emote(token)
     if type(token) ~= "string" or token == "" then return end
-    if token == "READ" and mapIsOpen() then return end
+    if token == "READ" and WJ.mapIsOpen() then return end
     write("EMOTE", token)
     counts.emotes = counts.emotes + 1
   end

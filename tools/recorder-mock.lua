@@ -619,6 +619,15 @@ function Screenshot()
   if shotAnswer then fire(shotAnswer) end
 end
 local function bigExpect(ok, what) if not ok then realPrint("-- expect FAIL: " .. what) end end
+local mapNow
+local realPosition = addonTable.currentPosition
+addonTable.currentPosition = function() return mapNow end
+local MAPS = {
+  [30] = { mapType = 3, parentMapID = 13 }, [55] = { mapType = 5, parentMapID = 52 }, [52] = { mapType = 3, parentMapID = 13 },
+  [13] = { mapType = 2, parentMapID = 0 }, [40] = { mapType = 3, parentMapID = 13 },
+  [41] = { mapType = 3, parentMapID = 13 }, [42] = { mapType = 3, parentMapID = 13 },
+}
+C_Map.GetMapInfo = function(id) return MAPS[id] end
 local function shots(wanted, what)
   bigExpect(shotsTaken == wanted, what .. ": " .. shotsTaken .. " screenshots, wanted " .. wanted)
 end
@@ -658,7 +667,8 @@ shots(4, "a mount")
 bigExpect(ChatFrame1.alpha == 0.8, "a failure left chat hidden")
 advance(2)
 shotAnswer = nil
-addonTable.highlightShot("zone", "Elwynn Forest")
+mapNow = 30
+addonTable.zoneChanged()
 advance(4)
 bigExpect(ChatFrame1.alpha == 0, "the zone's picture should still be waiting on the game")
 advance(3)
@@ -667,7 +677,7 @@ bigExpect(ChatFrame1.alpha == 0.8, "no answer left chat hidden")
 shotAnswer = "SCREENSHOT_SUCCEEDED"
 advance(2)
 addonTable.highlightShot("mount", "first")
-addonTable.highlightShot("zone", "Elwynn Forest")
+addonTable.zoneChanged()
 advance(4)
 shots(5, "a second first mount and zone")
 fire("PLAYER_DEAD")                 -- a first death has its picture, and only the first
@@ -683,6 +693,48 @@ addonTable.highlightShot("death", "first")   -- on a Hardcore realm every death 
 advance(3)
 shots(7, "a Hardcore death")
 C_GameRules.IsHardcoreActive = function() return false end
+-- an instance has one picture; a cave counts as the zone its map belongs to, so it has none of
+-- its own; a continent is no zone; a picture of a place waits for the world map to close, and is
+-- given up if the character has moved on by then
+addonTable.highlightShot("instance", 36)
+advance(4)
+shots(8, "a first instance")
+addonTable.highlightShot("instance", 36)
+advance(4)
+shots(8, "an instance already pictured")
+mapNow = 55
+addonTable.zoneChanged()
+advance(4)
+shots(9, "a cave, the first of its zone")
+mapNow = 52
+addonTable.zoneChanged()
+advance(4)
+shots(9, "the zone a cave belongs to")
+mapNow = 13
+addonTable.zoneChanged()
+advance(4)
+shots(9, "a continent")
+mapNow = 40
+WorldMapFrame.shown = true
+addonTable.zoneChanged()
+advance(5)
+shots(9, "a new zone with the map open")
+WorldMapFrame.shown = false
+advance(2)
+shots(10, "a new zone once the map closed")
+mapNow = 41
+WorldMapFrame.shown = true
+addonTable.zoneChanged()
+advance(4)
+mapNow = 42
+WorldMapFrame.shown = false
+advance(2)
+shots(10, "a zone left behind while the map was open")
+mapNow = 41
+addonTable.zoneChanged()
+advance(4)
+shots(11, "that zone, on coming back")
+addonTable.currentPosition = realPosition
 screenshotsOn = false
 local chatBefore = ChatFrame1.alpha
 fire("SCREENSHOT_SUCCEEDED")   -- the player's own
@@ -1470,7 +1522,7 @@ local function kindIs(kind, want)
   local got = table.concat(byKind[kind] or {}, " / ")
   expect(got == table.concat(want, " / "), kind .. " lines aren't " .. table.concat(want, " / ") .. ": " .. got)
 end
-kindIs("SHOT", { "level", "boss", "boss", "death", "death", "" })
+kindIs("SHOT", { "level", "boss", "boss", "death", "death", "instance", "zone", "zone", "zone", "" })
 kindIs("WEATHER", { "1 0.5000", "1 0.8000" })
 kindIs("DAYLIGHT", { "1", "0" })
 kindIs("BROKEN", { "8 3003" })

@@ -66,6 +66,9 @@ function WJ.onEnteringWorld(isLogin, isReload)
   local transition = false
   if instanceType ~= "none" and instanceMapID ~= currentInstanceMapID then
     write("INST", "enter", instanceMapID, instanceType, difficultyID, name)
+    if instanceType == "party" or instanceType == "raid" or instanceType == "scenario" then
+      WJ.highlightShot("instance", instanceMapID)
+    end
     currentInstanceMapID = instanceMapID
     transition = true
   elseif instanceType == "none" and currentInstanceMapID ~= 0 then
@@ -92,7 +95,7 @@ local function writeZoneIfChanged()
   local zone, subzone = GetZoneText(), GetSubZoneText()
   if zone ~= lastZone or subzone ~= lastSubzone then
     write("ZONE", zone, subzone)
-    if zone ~= lastZone and zone ~= "" and not IsInInstance() then WJ.highlightShot("zone", zone) end
+    WJ.zoneChanged()
     lastZone, lastSubzone = zone, subzone
   end
 end
