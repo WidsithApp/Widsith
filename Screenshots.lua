@@ -1,7 +1,7 @@
 -- Widsith — Screenshots
 --
 -- SHOT: the game saved a screenshot. The player's own are only noted, and
--- nothing about them changes. With "Screenshot big moments" turned on the addon
+-- nothing about them changes. With "Screenshot highlights" turned on the addon
 -- also takes some itself: each new level, a boss's first defeat, the first time
 -- in a zone, the first mount, the first death, and every death on a Hardcore
 -- realm. Those lines say which moment it was, which tells them from the player's.
@@ -202,7 +202,7 @@ end
 
 -- `key` names what can only have one picture: the boss, the zone, the first of
 -- something. None means every time.
-function WJ.bigMoment(why, key)
+function WJ.highlightShot(why, key)
   if not WJ.getIconSetting("screenshots") then return end
   if why == "death" and isHardcore() then key = nil end
   if key ~= nil and seenList(why)[key] then return end
