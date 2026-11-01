@@ -18,7 +18,7 @@ local category
 
 -- What each setting is when nothing has been changed: the panel's Defaults
 -- button puts these back.
-local DEFAULTS = { shown = true, remind = true, animate = true, chat = true, emote = false, onRing = true, locked = false, iconSize = 1 }
+local DEFAULTS = { shown = true, remind = true, animate = true, chat = true, emote = false, onRing = true, locked = false, iconSize = 1, shotOnLevel = false }
 
 local function checkbox(name, key, tooltip)
   local setting = Settings.RegisterProxySetting(category, "WIDSITH_" .. key:upper(), Settings.VarType.Boolean, name,
@@ -133,6 +133,7 @@ local function createPanel()
   Settings.CreateDropdown(category, sizeSetting, sizeOptions, "Small is the size of the day and night dial beside it.")
 
   layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("The recording"))
+  checkbox("Screenshot each new level", "shotOnLevel", "A moment after you reach a new level, the game takes a screenshot and saves it in your Screenshots folder, as your own screenshot key does. Off unless you turn it on.")
   layout:AddInitializer(CreateSettingsButtonInitializer("Save the recording", "Save now",
     function() if WJ.saveNow then WJ.saveNow() end end,
     "Reloads the interface, which is the only way the game writes the file: a few seconds of loading screen, then you carry on. Not in combat.", true))

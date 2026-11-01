@@ -2,6 +2,10 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
+## Next
+
+- A new setting, "Screenshot each new level", takes a screenshot a moment after you level up and saves it in your Screenshots folder. It is off unless you turn it on, in the icon's menu or under Options, AddOns, Widsith.
+
 ## 0.5.0 · 2026-10-29
 
 - Other players are named. A buff another player casts on you records who cast it, and a death at another player's hands records who dealt each hit, as the game names them. Group members and trade partners were already named; this makes the recording consistent.

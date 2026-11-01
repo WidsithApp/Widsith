@@ -595,7 +595,21 @@ fire("CHAT_MSG_MONSTER_YELL", SECRET, SECRET)
 -- the player's own /say and /yell: speech is switched off, so nothing may be written
 fire("CHAT_MSG_SAY", "Well met!", "Aldwin", "Common", "", "", "", 0, 0, "", 7, 12, "Player-4747-0ABC1234")
 fire("CHAT_MSG_YELL", "For the Alliance!", "Aldwin", "Common", "", "", "", 0, 0, "", 7, 13, "Player-4747-0ABC1234")
+-- the setting for a screenshot at each level: off, a level takes none; on, one follows it,
+-- marked as the addon's; a failed one marks nothing; the player's own stays unmarked
+local shotOnLevel = false
+local shotAnswer = "SCREENSHOT_SUCCEEDED"
+Widsith.getIconSetting = function(key) return key == "shotOnLevel" and shotOnLevel end
+function Screenshot() fire(shotAnswer) end
+fire("PLAYER_LEVEL_UP", 5, 17, 0, 0, 0, 1, 0, 1, 0)
+advance(2)
+shotOnLevel = true
 fire("PLAYER_LEVEL_UP", 6, 17, 0, 0, 0, 1, 0, 1, 0)
+advance(2)
+shotAnswer = "SCREENSHOT_FAILED"
+fire("PLAYER_LEVEL_UP", 7, 17, 0, 0, 0, 1, 0, 1, 0)
+advance(2)
+fire("SCREENSHOT_SUCCEEDED")
 fire("CHAT_MSG_COMBAT_FACTION_CHANGE", "Reputation with Stormwind increased by 50.")
 
 -- the map opened (the game performs READ as it opens) and closed; then the player's own /read
@@ -1379,6 +1393,7 @@ local function kindIs(kind, want)
   local got = table.concat(byKind[kind] or {}, " / ")
   expect(got == table.concat(want, " / "), kind .. " lines aren't " .. table.concat(want, " / ") .. ": " .. got)
 end
+kindIs("SHOT", { "level", "" })
 kindIs("WEATHER", { "1 0.5000", "1 0.8000" })
 kindIs("DAYLIGHT", { "1", "0" })
 kindIs("BROKEN", { "8 3003" })
