@@ -17,5 +17,6 @@ Position.lua
 Events.lua
 Extras.lua
 Moments.lua
+Screenshots.lua
 Save.lua
 Options.lua

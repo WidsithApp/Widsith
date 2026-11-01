@@ -542,9 +542,12 @@ C_PlayerInfo = { IsSelfFoundActive = function() return false end }
 
 -- Run ------------------------------------------------------------------------------
 local addonTable = {}
-for _, file in ipairs({ "Core.lua", "Position.lua", "Events.lua", "Extras.lua", "Moments.lua" }) do
+for _, file in ipairs({ "Core.lua", "Position.lua", "Events.lua", "Extras.lua", "Moments.lua", "Screenshots.lua" }) do
   assert(loadfile(DIR .. file))(ADDON, addonTable)
 end
+-- The icon's settings live in Save.lua; only the one that matters here.
+local screenshotsOn = false
+addonTable.getIconSetting = function(key) return key == "screenshots" and screenshotsOn end
 
 fire("ADDON_LOADED", ADDON)
 local firstSessionAt = clock
@@ -595,21 +598,95 @@ fire("CHAT_MSG_MONSTER_YELL", SECRET, SECRET)
 -- the player's own /say and /yell: speech is switched off, so nothing may be written
 fire("CHAT_MSG_SAY", "Well met!", "Aldwin", "Common", "", "", "", 0, 0, "", 7, 12, "Player-4747-0ABC1234")
 fire("CHAT_MSG_YELL", "For the Alliance!", "Aldwin", "Common", "", "", "", 0, 0, "", 7, 13, "Player-4747-0ABC1234")
--- the setting for a screenshot at each level: off, a level takes none; on, one follows it,
--- marked as the addon's; a failed one marks nothing; the player's own stays unmarked
-local shotOnLevel = false
+-- big moments: off, a level takes no picture; on, each moment takes one with chat gone and the
+-- mark on, and both put back. What can only have one picture has one. A lesser moment waits out
+-- the gap, a greater one doesn't. A failure or no answer at all still brings chat back. The
+-- player's own screenshot is noted plainly and touches nothing.
+WidsithUI = WidsithUI or {}
+CHAT_FRAMES = { "ChatFrame1" }
+ChatFrame1 = CreateFrame()
+ChatFrame1.alpha = 0.8
+function widget:GetAlpha() return self.alpha or 1 end
+function widget:SetAlpha(value) self.alpha = value end
+function widget:GetEffectiveScale() return 1 end
+function widget:CreateTexture() return setmetatable({}, widget) end
+function GetPhysicalScreenSize() return 1280, 768 end
 local shotAnswer = "SCREENSHOT_SUCCEEDED"
-Widsith.getIconSetting = function(key) return key == "shotOnLevel" and shotOnLevel end
-function Screenshot() fire(shotAnswer) end
+local shotsTaken, chatAtShot = 0, nil
+function Screenshot()
+  shotsTaken = shotsTaken + 1
+  chatAtShot = ChatFrame1.alpha
+  if shotAnswer then fire(shotAnswer) end
+end
+local function bigExpect(ok, what) if not ok then realPrint("-- expect FAIL: " .. what) end end
+local function shots(wanted, what)
+  bigExpect(shotsTaken == wanted, what .. ": " .. shotsTaken .. " screenshots, wanted " .. wanted)
+end
+bigExpect(addonTable.markCode("Player-1071-072D2F76", 1793530000, 1793530012) == 13038999, "the mark's sum changed")
 fire("PLAYER_LEVEL_UP", 5, 17, 0, 0, 0, 1, 0, 1, 0)
 advance(2)
-shotOnLevel = true
+shots(0, "with the setting off")
+screenshotsOn = true
 fire("PLAYER_LEVEL_UP", 6, 17, 0, 0, 0, 1, 0, 1, 0)
 advance(2)
-shotAnswer = "SCREENSHOT_FAILED"
-fire("PLAYER_LEVEL_UP", 7, 17, 0, 0, 0, 1, 0, 1, 0)
+shots(1, "a level")
+bigExpect(chatAtShot == 0, "chat was showing in a big moment's picture")
+bigExpect(ChatFrame1.alpha == 0.8, "chat didn't come back as it was")
+addonTable.bigMoment("zone", "Westfall")      -- a lesser moment waits out the gap
+advance(4)
+shots(1, "a zone inside the gap")
+fire("ENCOUNTER_END", 77, "Hogger", 1, 5, 1)   -- a greater moment, inside the gap
+advance(3)
+shots(2, "a boss inside the gap")
+addonTable.SHOT_GAP = 1                        -- the rest needn't wait half a minute each
+fire("ENCOUNTER_END", 78, "Lost", 1, 5, 0)     -- a wipe is no moment
+advance(3)
+shots(2, "a wipe")
 advance(2)
-fire("SCREENSHOT_SUCCEEDED")
+fire("ENCOUNTER_END", 77, "Hogger", 1, 5, 1)   -- that boss again
+advance(3)
+shots(2, "a boss already pictured")
+fire("ENCOUNTER_END", 79, "Other", 1, 5, 1)
+fire("PLAYER_LEVEL_UP", 7, 17, 0, 0, 0, 1, 0, 1, 0)   -- the same blow: one picture, the boss
+advance(4)
+shots(3, "a boss and a level together")
+advance(2)
+shotAnswer = "SCREENSHOT_FAILED"
+addonTable.bigMoment("mount", "first")
+advance(4)
+shots(4, "a mount")
+bigExpect(ChatFrame1.alpha == 0.8, "a failure left chat hidden")
+advance(2)
+shotAnswer = nil
+addonTable.bigMoment("zone", "Elwynn Forest")
+advance(4)
+bigExpect(ChatFrame1.alpha == 0, "the zone's picture should still be waiting on the game")
+advance(3)
+shots(5, "a zone")
+bigExpect(ChatFrame1.alpha == 0.8, "no answer left chat hidden")
+shotAnswer = "SCREENSHOT_SUCCEEDED"
+advance(2)
+addonTable.bigMoment("mount", "first")
+addonTable.bigMoment("zone", "Elwynn Forest")
+advance(4)
+shots(5, "a second first mount and zone")
+fire("PLAYER_DEAD")                 -- a first death has its picture, and only the first
+advance(3)
+shots(6, "a first death")
+fire("PLAYER_ALIVE")
+advance(2)
+addonTable.bigMoment("death", "first")
+advance(3)
+shots(6, "a second death")
+C_GameRules.IsHardcoreActive = function() return true end
+addonTable.bigMoment("death", "first")   -- on a Hardcore realm every death has one
+advance(3)
+shots(7, "a Hardcore death")
+C_GameRules.IsHardcoreActive = function() return false end
+screenshotsOn = false
+local chatBefore = ChatFrame1.alpha
+fire("SCREENSHOT_SUCCEEDED")   -- the player's own
+bigExpect(ChatFrame1.alpha == chatBefore, "the player's own screenshot touched chat")
 fire("CHAT_MSG_COMBAT_FACTION_CHANGE", "Reputation with Stormwind increased by 50.")
 
 -- the map opened (the game performs READ as it opens) and closed; then the player's own /read
@@ -1393,7 +1470,7 @@ local function kindIs(kind, want)
   local got = table.concat(byKind[kind] or {}, " / ")
   expect(got == table.concat(want, " / "), kind .. " lines aren't " .. table.concat(want, " / ") .. ": " .. got)
 end
-kindIs("SHOT", { "level", "" })
+kindIs("SHOT", { "level", "boss", "boss", "death", "death", "" })
 kindIs("WEATHER", { "1 0.5000", "1 0.8000" })
 kindIs("DAYLIGHT", { "1", "0" })
 kindIs("BROKEN", { "8 3003" })

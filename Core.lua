@@ -128,6 +128,11 @@ function WJ.isRecording()
   return session ~= nil
 end
 
+-- The server time the session's SESSION line opens with.
+function WJ.sessionStartedAt()
+  return session and session.startedAt
+end
+
 -- The file was last written by the logout or reload that began this session,
 -- so everything recorded since then is unsaved (Save.lua's reminder).
 function WJ.secondsSinceSave()
@@ -542,7 +547,7 @@ local USED_APIS = {
   "C_Reputation.GetFactionDataByID", "C_Reputation.GetNumFactions", "C_Reputation.GetFactionDataByIndex", "GetProfessions", "GetProfessionInfo", "GetAchievementInfo",
   "GetAverageItemLevel", "GetCritChance", "GetHaste", "GetMasteryEffect", "GetCombatRatingBonus",
   "GetVersatilityBonus", "C_SpecializationInfo.GetSpecialization", "C_SpecializationInfo.GetSpecializationInfo",
-  "GetSpecialization", "GetBindLocation", "C_PetBattles.GetNumPets", "C_ChatInfo.PerformEmote",
+  "GetSpecialization", "GetBindLocation", "Screenshot", "GetPhysicalScreenSize", "C_PetBattles.GetNumPets", "C_ChatInfo.PerformEmote",
   "JumpOrAscendStart", "C_TradeSkillUI.CraftRecipe", "C_TradeSkillUI.IsTradeSkillReady",
   "C_TradeSkillUI.GetAllRecipeIDs", "C_TradeSkillUI.GetFilteredRecipeIDs", "C_TradeSkillUI.GetRecipeInfo",
   "C_TradeSkillUI.GetBaseProfessionInfo", "C_TradeSkillUI.IsTradeSkillLinked", "BuyMerchantItem", "C_MerchantFrame.GetItemInfo",
