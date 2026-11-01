@@ -2,7 +2,7 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
-## Next
+## 0.6.0 · 2026-11-02
 
 - A new setting, "Screenshot highlights", takes a screenshot when you reach a new level, defeat a boss for the first time, enter a zone or an instance for the first time, summon your first mount or die for the first time, and at every death on a Hardcore realm. Chat, the friends list and the guild window are hidden for the picture, and a tiny mark goes in its corner. The pictures go in your Screenshots folder. Your own screenshots aren't touched. It is off unless you turn it on, in the icon's menu or under Options, AddOns, Widsith.
 
