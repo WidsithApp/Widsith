@@ -198,6 +198,8 @@ local function loadingScreenUp()
   return loadingSince ~= nil and GetTime() - loadingSince < WJ.TIMER_PERIOD
 end
 
+WJ.loadingScreenUp = loadingScreenUp
+
 local function writePeriodic()
   WJ.write("TIME", GetServerTime())
   WJ.snapshot()

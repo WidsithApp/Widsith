@@ -3,7 +3,7 @@
 -- Everything beyond the core journey: travel spells and mounts, reputation,
 -- skills and professions, achievements, gear and the character sheet,
 -- currency, encounters, spec and hearth, gear sets and talents, the guild, trading with NPCs and
--- players, pet battles, and the small things (jumps, screenshots, emotes).
+-- players, pet battles, and the small things (jumps, emotes).
 -- Speech is here too, switched off. Every line here is a fact the game
 -- stated; where a fact is inferred from a consequence (SPELL) the line says
 -- so in a field.
@@ -76,6 +76,7 @@ handlers.UNIT_SPELLCAST_SUCCEEDED = function(unit, castGUID, spellID)
     -- A mount is summoned, not travelled by: never a candidate for SPELL (a
     -- mount called at an instance door would otherwise be named for the load).
     write("MOUNT", spellID, mountID)
+    WJ.bigMoment("mount", "first")
     return
   end
   local startT
@@ -783,6 +784,7 @@ end
 
 handlers.ENCOUNTER_END = function(encounterID, name, difficultyID, groupSize, success)
   write("ENCOUNTER", "end", encounterID, difficultyID, groupSize, success, name)
+  if not secret(success) and not secret(encounterID) and success == 1 then WJ.bigMoment("boss", encounterID) end
 end
 
 ---------------------------------------------------------------------------
@@ -1194,41 +1196,6 @@ end
 if RECORD_SPEECH then
   handlers.CHAT_MSG_SAY  = speech("say")
   handlers.CHAT_MSG_YELL = speech("yell")
-end
-
----------------------------------------------------------------------------
--- Screenshots (JUMP and EMOTE are hooks, below)
---
--- SHOT: the game saved a screenshot. With the setting on, the addon asks for
--- one itself a moment after each new level, and that line says why ("level"),
--- since the addon took it and the player didn't stop to keep a view. The game
--- says that a screenshot was saved or failed, not who asked for it, so the
--- reason is held for the one being taken, and let go if no answer comes.
----------------------------------------------------------------------------
-
-local LEVEL_SHOT_WAIT = 1.5   -- s; long enough for the level-up's light and the game's banner to be up
-local SHOT_ANSWER = 5         -- s the game has to say the screenshot was saved or failed
-local shotReason
-
-handlers.SCREENSHOT_SUCCEEDED = function()
-  if shotReason then write("SHOT", shotReason) else write("SHOT") end
-  shotReason = nil
-  counts.shots = counts.shots + 1
-end
-
-handlers.SCREENSHOT_FAILED = function()
-  shotReason = nil
-end
-
--- Paused, nothing is recorded, so nothing is taken either.
-function WJ.onLevelUp()
-  if not WJ.getIconSetting("shotOnLevel") then return end
-  C_Timer.After(LEVEL_SHOT_WAIT, WJ.guard("levelShot", function()
-    if not WJ.isRecording() then return end
-    shotReason = "level"
-    C_Timer.After(SHOT_ANSWER, function() shotReason = nil end)
-    Screenshot()
-  end))
 end
 
 ---------------------------------------------------------------------------
