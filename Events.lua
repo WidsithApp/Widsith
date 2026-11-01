@@ -66,6 +66,9 @@ function WJ.onEnteringWorld(isLogin, isReload)
   local transition = false
   if instanceType ~= "none" and instanceMapID ~= currentInstanceMapID then
     write("INST", "enter", instanceMapID, instanceType, difficultyID, name)
+    if instanceType == "party" or instanceType == "raid" or instanceType == "scenario" then
+      WJ.highlightShot("instance", instanceMapID)
+    end
     currentInstanceMapID = instanceMapID
     transition = true
   elseif instanceType == "none" and currentInstanceMapID ~= 0 then
@@ -92,6 +95,7 @@ local function writeZoneIfChanged()
   local zone, subzone = GetZoneText(), GetSubZoneText()
   if zone ~= lastZone or subzone ~= lastSubzone then
     write("ZONE", zone, subzone)
+    WJ.zoneChanged()
     lastZone, lastSubzone = zone, subzone
   end
 end
@@ -210,6 +214,7 @@ handlers.PLAYER_LEVEL_UP = function(level, ...)
   write("LEVEL", level, ...)
   -- Stats and UnitLevel() update after the event; snapshot once they have.
   C_Timer.After(1, WJ.guard("levelSnapshot", function() WJ.snapshot() end))
+  WJ.highlightShot("level")
 end
 
 -- MONEY is written in its own section below, with the reason for each change.
@@ -238,6 +243,7 @@ handlers.PLAYER_DEAD = function()
     deathOutstanding = true
     -- The hits that did it (Moments.lua).
     if WJ.onDeath then WJ.onDeath() end
+    WJ.highlightShot("death", "first")
   end
 end
 
