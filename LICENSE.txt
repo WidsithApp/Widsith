@@ -22,6 +22,6 @@ fitness for a particular purpose and non-infringement. In no event shall
 Reflective Grove LLC be liable for any claim, damages or other liability
 arising from the addon or its use.
 
-World of Warcraft and Blizzard Entertainment are trademarks or registered
-trademarks of Blizzard Entertainment, Inc. Widsith is a fan project and is not
-made, endorsed or supported by Blizzard Entertainment.
+Widsith is a fan project. It is not made, endorsed or supported by Blizzard
+Entertainment. World of Warcraft and Warcraft are trademarks or registered
+trademarks of Blizzard Entertainment, Inc. in the U.S. and/or other countries.

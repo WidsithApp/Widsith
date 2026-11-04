@@ -61,15 +61,16 @@ local function calm()
   if InCombatLockdown() or UnitAffectingCombat("player") then return false end
   if UnitIsDeadOrGhost("player") or UnitOnTaxi("player") then return false end
   if IsInInstance() then return false end
-  if C_PetBattles and C_PetBattles.IsInBattle() then return false end
+  if WJ.gameCall("C_PetBattles", "IsInBattle") then return false end
   return true
 end
 
 -- Saving is a reload. The flag survives it (the file is written on the way
 -- down), so the interface that comes back knows it was asked for and says so.
 -- Not while the game fails to read the file back (WJ.savesNotLoaded): a reload
--- then replaces the recording on disk.
-local function save()
+-- then replaces the recording on disk. The player's action, from the icon, the
+-- reminder, the settings panel or /widsith save: a fault is answered, never thrown.
+local save = WJ.attempt("save", function()
   if InCombatLockdown() then
     print(PREFIX .. "can't reload the interface in combat; try again when the fight is over.")
     return
@@ -80,7 +81,7 @@ local function save()
   end
   settings.saving = true
   ReloadUI()
-end
+end)
 
 -- An emote when the recording is saved, so the people nearby see what the
 -- character is doing: every reload writes the file, so the hook is on the
@@ -289,7 +290,7 @@ local function setBreathing(on)
       if not group:IsPlaying() then
         -- The heart a moment behind the layer before it.
         if i == #layers then
-          C_Timer.After(0.3, function() if layer.breathe and not layer.breathe:IsPlaying() and layer:IsShown() then layer.breathe:Play() end end)
+          C_Timer.After(0.3, WJ.guard("breathe", function() if layer.breathe and not layer.breathe:IsPlaying() and layer:IsShown() then layer.breathe:Play() end end))
         else
           group:Play()
         end
@@ -556,7 +557,8 @@ end
 
 WJ.saveNow = save
 
-function WJ.togglePause()
+-- The player's action, from the menu or the settings panel.
+WJ.togglePause = WJ.attempt("pause", function()
   if WJ.isRecording() then
     WJ.pause()
     hideBubble()
@@ -564,9 +566,10 @@ function WJ.togglePause()
     WJ.resume()
   end
   updateIcon()
-end
+end)
 
-local function openMenu(self)
+-- The player's action, a right click on the icon.
+local openMenu = WJ.attempt("menu", function(self)
   if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
   GameTooltip:Hide()
   MenuUtil.CreateContextMenu(self, function(_, root)
@@ -598,7 +601,7 @@ local function openMenu(self)
     end
     root:CreateButton("Hide icon", function() WJ.setIconShown(false) end)
   end)
-end
+end)
 
 -- A scale animation about the base, once, in a group of its own.
 local function scaleFromBase(group, from, to, seconds, smoothing)
@@ -749,15 +752,17 @@ local function createIcon()
     settings.ringAngle = math.atan2(cy - my, cx - mx)
     placeIcon()
   end
-  icon:SetScript("OnDragStart", function(self)
+  -- The icon's own scripts run under the guard like every handler: a fault in one is
+  -- named, and never a raw error.
+  icon:SetScript("OnDragStart", WJ.guard("iconDrag", function(self)
     if settings.locked then return end
     if onRing() then
       self:SetScript("OnUpdate", WJ.guard("iconDrag", followCursor))
     else
       self:StartMoving()
     end
-  end)
-  icon:SetScript("OnDragStop", function(self)
+  end))
+  icon:SetScript("OnDragStop", WJ.guard("iconDrag", function(self)
     if onRing() then
       self:SetScript("OnUpdate", nil)
       if bubble and bubble:IsShown() then placeBubble() end
@@ -770,19 +775,19 @@ local function createIcon()
     local k = toIconUnits()
     settings.point = { point, relativePoint, x / k, y / k }
     if bubble and bubble:IsShown() then placeBubble() end
-  end)
+  end))
   -- A left click saves: the flame that burns down to ask for a save is also the
   -- answer. The right button opens the menu. A drag never counts as a click.
-  icon:SetScript("OnClick", function(self, button)
+  icon:SetScript("OnClick", WJ.guard("iconClick", function(self, button)
     if button == "RightButton" then
       openMenu(self)
     else
       GameTooltip:Hide()
       save()
     end
-  end)
-  icon:SetScript("OnEnter", showTooltip)
-  icon:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  end))
+  icon:SetScript("OnEnter", WJ.guard("iconTooltip", showTooltip))
+  icon:SetScript("OnLeave", WJ.guard("iconTooltip", function() GameTooltip:Hide() end))
 
   -- Modern clients snap textures to the screen's pixel grid, which steps the edges of
   -- anything drawn at a scale; the icon's parts are scaled, so they draw unsnapped.
@@ -842,19 +847,20 @@ end
 -- The addon menu by the minimap (TOC: AddonCompartmentFunc). Clicking the
 -- entry opens the options panel, where a hidden icon can always be brought
 -- back; on a client with no such panel it shows or hides the icon instead.
-function Widsith_OnAddonCompartmentClick()
+-- The player's action, from the addon compartment on the minimap.
+Widsith_OnAddonCompartmentClick = WJ.attempt("compartment", function()
   if WJ.openOptions then
     WJ.openOptions()
   else
     WJ.setIconShown(not WJ.iconShown())
   end
-end
+end)
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-frame:SetScript("OnEvent", function(self, event, ...)
+frame:SetScript("OnEvent", WJ.guard("icon", function(self, event, ...)
   if event == "ADDON_LOADED" then
     if (...) ~= ADDON_NAME then return end
     WidsithUI = WidsithUI or {}
@@ -886,4 +892,4 @@ frame:SetScript("OnEvent", function(self, event, ...)
       say("saved.")
     end
   end
-end)
+end))

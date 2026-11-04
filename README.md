@@ -52,7 +52,7 @@ Each version is also on this repository's Releases page as a zip, built from its
 
 The game writes an addon's saved file only when you log out or reload the interface, so play since the last save is lost if the game closes unexpectedly. The icon by the minimap shows how much play is unsaved. Its flame is lit while Widsith records and grows shorter over half an hour of unsaved play. After that the ring around it glows, and Widsith offers to save once you are resting and out of combat.
 
-A left click on the icon saves by reloading the interface. A right click opens a menu to pause or resume, turn the reminder, the animations or the chat messages on and off, attach the icon to the minimap or lock it in place, change its size, set the screenshot settings, or hide it. While recording is paused, the icon is dark. The settings panel holds the same switches, so a hidden icon can always be brought back.
+A left click on the icon saves by reloading the interface. A right click opens a menu to pause or resume, turn the reminder, the animations, the chat messages or the emote when saving on and off, attach the icon to the minimap or lock it in place, change its size, set the screenshot settings, or hide it. While recording is paused, the icon is dark. The settings panel holds the same switches, so a hidden icon can always be brought back.
 
 ## Screenshots
 
@@ -88,7 +88,7 @@ Widsith is free to download and use, and its source is open for anyone to read, 
 
 The official copies are the ones published at widsith.app, in this repository and on its Releases page, and on CurseForge and Wago. A copy from anywhere else, or a changed one, isn't ours: we can't support it and aren't responsible for what it does.
 
-World of Warcraft is a trademark of Blizzard Entertainment, Inc. Widsith is a fan project and is not made, endorsed or supported by Blizzard Entertainment.
+Widsith is a fan project. It is not made, endorsed or supported by Blizzard Entertainment. World of Warcraft and Warcraft are trademarks or registered trademarks of Blizzard Entertainment, Inc. in the U.S. and/or other countries.
 
 ## Contact
 

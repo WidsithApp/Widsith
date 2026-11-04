@@ -821,16 +821,8 @@ end
 
 local SETTLE = 0.5   -- s after the last of a burst of change events
 
-local function pass(ok, ...)
-  if ok then return ... end
-end
-
--- What namespace.name(...) returns, or nothing when the client lacks it or it throws.
-local function gameCall(namespace, name, ...)
-  local api = _G[namespace]
-  if type(api) ~= "table" or type(api[name]) ~= "function" then return end
-  return pass(pcall(api[name], ...))
-end
+-- What namespace.name(...) returns, or nothing when the client lacks it or it throws (Core.lua).
+local gameCall = WJ.gameCall
 
 -- A table that may be read: present and not secret.
 local function readable(t)
@@ -1140,15 +1132,16 @@ end
 local battleOpen, battleOutcome = false, nil
 
 handlers.PET_BATTLE_OPENING_START = function()
-  if not C_PetBattles then return end
   local enemy = (Enum and Enum.BattlePetOwner and Enum.BattlePetOwner.Enemy) or 2
+  -- A client that can't say how many pets there are can't describe the battle.
+  local n = gameCall("C_PetBattles", "GetNumPets", enemy)
+  if n == nil then return end
   local species = {}
-  local n = C_PetBattles.GetNumPets and C_PetBattles.GetNumPets(enemy) or 0
-  for i = 1, n do species[i] = C_PetBattles.GetPetSpeciesID(enemy, i) end
+  for i = 1, n do species[i] = gameCall("C_PetBattles", "GetPetSpeciesID", enemy, i) end
   local kind = "pvp"
-  if C_PetBattles.IsWildBattle and C_PetBattles.IsWildBattle() then
+  if gameCall("C_PetBattles", "IsWildBattle") then
     kind = "wild"
-  elseif C_PetBattles.IsPlayerNPC and C_PetBattles.IsPlayerNPC(enemy) then
+  elseif gameCall("C_PetBattles", "IsPlayerNPC", enemy) then
     kind = "npc"
   end
   battleOpen, battleOutcome = true, nil
@@ -1324,17 +1317,17 @@ end
 -- Opening state, written with the first snapshot (Core.openingState)
 ---------------------------------------------------------------------------
 
+-- Each guarded on its own, so whatever goes wrong there is named and the rest is still written.
 function WJ.writeOpeningExtras()
   opened = true
-  writeSkills(true)
-  writeReputations()
-  writeCurrencies()
-  writeSpec(true)
-  -- Each guarded on its own, so whatever goes wrong there is named and the rest is still written.
+  WJ.guard("skills", writeSkills)(true)
+  WJ.guard("reputations", writeReputations)()
+  WJ.guard("currencies", writeCurrencies)()
+  WJ.guard("spec", writeSpec)(true)
   WJ.guard("talents", writeTalents)()
   WJ.guard("gear sets", writeGearSets)()
-  if GetBindLocation then write("BIND", GetBindLocation()) end
-  writeGuild()
+  WJ.guard("bind", function() if GetBindLocation then write("BIND", GetBindLocation()) end end)()
+  WJ.guard("guild", writeGuild)()
 end
 
 -- A session resumed after a pause writes the character sheet afresh
