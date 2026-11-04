@@ -77,7 +77,8 @@ local db                 -- WidsithDB
 local session            -- current session table inside db.sessions
 local buffer = {}        -- lines not yet packed into a chunk
 local lastEquipStrings   -- the worn items' strings as last written with a SNAP this session
-local startClock         -- GetTime() at session start
+local startClock         -- GetTime() at session start: the origin of the lines' times
+local loadClock = GetTime()  -- when this addon load began: the game wrote the file at the logout or reload before it
 local paused = false     -- see WJ.pause(); declared here so WJ.health() sees it
 local previousOnFile     -- what the file held of the session before this load's first, for debug mode
 local counts = { pos = 0, kills = 0, loot = 0, xp = 0, quests = 0, deaths = 0, jumps = 0, shots = 0, emotes = 0 }
@@ -133,11 +134,11 @@ function WJ.sessionStartedAt()
   return session and session.startedAt
 end
 
--- The file was last written by the logout or reload that began this session,
--- so everything recorded since then is unsaved (Save.lua's reminder).
+-- The file was last written by the logout or reload that began this load, so
+-- everything recorded since then is unsaved (Save.lua's reminder), through a
+-- pause as much as a session: a resume starts a session and writes nothing.
 function WJ.secondsSinceSave()
-  if not session then return 0 end
-  return GetTime() - startClock
+  return GetTime() - loadClock
 end
 
 ---------------------------------------------------------------------------
