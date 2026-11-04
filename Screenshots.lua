@@ -179,9 +179,9 @@ local function take(moment)
   lastShotAt, lastShotRank = GetTime(), MOMENTS[moment.why].rank
   if moment.key ~= nil then seenList(moment.why)[moment.key] = true end
   -- First, so that nothing that goes wrong below can leave anything hidden.
-  C_Timer.After(ANSWER_WAIT, function()
+  C_Timer.After(ANSWER_WAIT, WJ.guard("shot", function()
     if taking == this then putBack() end
-  end)
+  end))
   hideParts(not this.chatShown)
   showMark()
   Screenshot()
