@@ -12,10 +12,22 @@
 local ADDON_NAME, WJ = ...
 _G.Widsith = WJ
 
+-- What namespace.name(...) returns, or nothing when the client lacks the
+-- namespace or the function, or the call throws: the one way of calling an API
+-- a client may not have. /widsith check names the ones this client lacks.
+local function pass(ok, ...)
+  if ok then return ... end
+end
+function WJ.gameCall(namespace, name, ...)
+  local api = _G[namespace]
+  if type(api) ~= "table" or type(api[name]) ~= "function" then return end
+  return pass(pcall(api[name], ...))
+end
+
 WJ.NAME          = "Widsith"
 WJ.PREFIX        = "|cff33ff99" .. WJ.NAME .. "|r "
 WJ.FORMAT        = 1     -- the line format; bumped only if a line's meaning changes
-WJ.VERSION       = C_AddOns and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "0.0.0"
+WJ.VERSION       = WJ.gameCall("C_AddOns", "GetAddOnMetadata", ADDON_NAME, "Version") or "0.0.0"
 WJ.CHUNK_LINES   = 256
 WJ.TIMER_PERIOD  = 300   -- seconds between TIME / SNAP / COUNT lines
 
@@ -577,7 +589,7 @@ local USED_APIS = {
   "C_Reputation.GetFactionDataByID", "C_Reputation.GetNumFactions", "C_Reputation.GetFactionDataByIndex", "GetProfessions", "GetProfessionInfo", "GetAchievementInfo",
   "GetAverageItemLevel", "GetCritChance", "GetHaste", "GetMasteryEffect", "GetCombatRatingBonus",
   "GetVersatilityBonus", "C_SpecializationInfo.GetSpecialization", "C_SpecializationInfo.GetSpecializationInfo",
-  "GetSpecialization", "GetBindLocation", "Screenshot", "GetPhysicalScreenSize", "C_PetBattles.GetNumPets", "C_ChatInfo.PerformEmote",
+  "GetSpecialization", "GetBindLocation", "Screenshot", "GetPhysicalScreenSize", "C_PetBattles.IsInBattle", "C_PetBattles.GetNumPets", "C_PetBattles.GetPetSpeciesID", "C_PetBattles.IsWildBattle", "C_PetBattles.IsPlayerNPC", "C_ChatInfo.PerformEmote",
   "JumpOrAscendStart", "C_TradeSkillUI.CraftRecipe", "C_TradeSkillUI.IsTradeSkillReady",
   "C_TradeSkillUI.GetAllRecipeIDs", "C_TradeSkillUI.GetFilteredRecipeIDs", "C_TradeSkillUI.GetRecipeInfo",
   "C_TradeSkillUI.GetBaseProfessionInfo", "C_TradeSkillUI.IsTradeSkillLinked", "BuyMerchantItem", "C_MerchantFrame.GetItemInfo",

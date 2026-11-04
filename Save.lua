@@ -61,7 +61,7 @@ local function calm()
   if InCombatLockdown() or UnitAffectingCombat("player") then return false end
   if UnitIsDeadOrGhost("player") or UnitOnTaxi("player") then return false end
   if IsInInstance() then return false end
-  if C_PetBattles and C_PetBattles.IsInBattle() then return false end
+  if WJ.gameCall("C_PetBattles", "IsInBattle") then return false end
   return true
 end
 
