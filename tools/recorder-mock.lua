@@ -1210,10 +1210,14 @@ change(80)
 fire("CHAT_MSG_MONEY", "You loot 80 Copper")
 advance(1)
 
--- pause and resume: a fresh baseline
+-- pause and resume: a fresh baseline for the lines, but the file is no fresher, so the
+-- unsaved time runs on through the pause
+local unsavedBeforePause = addonTable.secondsSinceSave()
 SlashCmdList.WIDSITH("pause")
 SlashCmdList.WIDSITH("resume")
 advance(8)
+bigExpect(addonTable.secondsSinceSave() >= unsavedBeforePause + 8,
+  "the unsaved time reset at a resume: " .. tostring(addonTable.secondsSinceSave()) .. " after " .. tostring(unsavedBeforePause))
 
 -- a session whose opening aura read the game refuses although C_Secrets said nothing was
 -- hidden: no AURA lines, no ERR, and the rest of the opening kept
