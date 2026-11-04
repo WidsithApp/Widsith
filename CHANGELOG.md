@@ -2,6 +2,15 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
+## 0.6.2 · 2026-11-05
+
+- A fight that is still going when you reload or resume recording is recorded when it ends. It used to be lost.
+- The flame, its tooltip and the save reminder count the time since the game last wrote the recording. After a pause and resume they used to start over as if you had just saved.
+- Something going wrong in a /widsith command, or when you click the icon, its menu or a button in the settings panel, now shows one plain line in chat instead of a red error.
+- A /widsith command typed with a space before it is read as typed.
+- /widsith check names every pet-battle function the addon uses, so on a client without pet battles it says so.
+- The About panel says the game writes the recording when you log out as well as when you reload.
+
 ## 0.6.1 · 2026-11-04
 
 - A second setting, "Show chat in the pictures", keeps your chat windows in the screenshots Widsith takes. The friends list, the guild window and Battle.net pop-ups are always hidden. It is off unless you turn it on.
