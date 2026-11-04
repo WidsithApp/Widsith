@@ -12,10 +12,22 @@
 local ADDON_NAME, WJ = ...
 _G.Widsith = WJ
 
+-- What namespace.name(...) returns, or nothing when the client lacks the
+-- namespace or the function, or the call throws: the one way of calling an API
+-- a client may not have. /widsith check names the ones this client lacks.
+local function pass(ok, ...)
+  if ok then return ... end
+end
+function WJ.gameCall(namespace, name, ...)
+  local api = _G[namespace]
+  if type(api) ~= "table" or type(api[name]) ~= "function" then return end
+  return pass(pcall(api[name], ...))
+end
+
 WJ.NAME          = "Widsith"
 WJ.PREFIX        = "|cff33ff99" .. WJ.NAME .. "|r "
 WJ.FORMAT        = 1     -- the line format; bumped only if a line's meaning changes
-WJ.VERSION       = C_AddOns and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "0.0.0"
+WJ.VERSION       = WJ.gameCall("C_AddOns", "GetAddOnMetadata", ADDON_NAME, "Version") or "0.0.0"
 WJ.CHUNK_LINES   = 256
 WJ.TIMER_PERIOD  = 300   -- seconds between TIME / SNAP / COUNT lines
 
@@ -77,7 +89,8 @@ local db                 -- WidsithDB
 local session            -- current session table inside db.sessions
 local buffer = {}        -- lines not yet packed into a chunk
 local lastEquipStrings   -- the worn items' strings as last written with a SNAP this session
-local startClock         -- GetTime() at session start
+local startClock         -- GetTime() at session start: the origin of the lines' times
+local loadClock = GetTime()  -- when this addon load began: the game wrote the file at the logout or reload before it
 local paused = false     -- see WJ.pause(); declared here so WJ.health() sees it
 local previousOnFile     -- what the file held of the session before this load's first, for debug mode
 local counts = { pos = 0, kills = 0, loot = 0, xp = 0, quests = 0, deaths = 0, jumps = 0, shots = 0, emotes = 0 }
@@ -133,11 +146,11 @@ function WJ.sessionStartedAt()
   return session and session.startedAt
 end
 
--- The file was last written by the logout or reload that began this session,
--- so everything recorded since then is unsaved (Save.lua's reminder).
+-- The file was last written by the logout or reload that began this load, so
+-- everything recorded since then is unsaved (Save.lua's reminder), through a
+-- pause as much as a session: a resume starts a session and writes nothing.
 function WJ.secondsSinceSave()
-  if not session then return 0 end
-  return GetTime() - startClock
+  return GetTime() - loadClock
 end
 
 ---------------------------------------------------------------------------
@@ -438,15 +451,16 @@ end
 -- yet in this session: quest titles (QLABEL), professions (SKILL), reputations (REP), currencies (CURRENCY), spec,
 -- talents, gear sets, hearth location, the weather and the time of day, the rules played under,
 -- auras and the game's counters. Written once the client has loaded that data.
+-- Each step under a guard of its own, so whatever goes wrong in one is named
+-- and the rest is still written: none depends on another.
 function WJ.openingState()
-  WJ.snapshot(true)
+  WJ.guard("snapshot", WJ.snapshot)(true)
   if WJ.writeOpeningWorld then WJ.guard("openingWorld", WJ.writeOpeningWorld)() end
-  if WJ.writeQuestLabels then WJ.writeQuestLabels() end
+  if WJ.writeQuestLabels then WJ.guard("questLabels", WJ.writeQuestLabels)() end
   -- The quest log's state as the session begins (Events.lua): the cache seeded, the quests
   -- already ready to turn in written as such.
-  if WJ.diffQuestLog then WJ.diffQuestLog(true, true) end
-  if WJ.writeOpeningExtras then WJ.writeOpeningExtras() end
-  -- Guarded on its own: whatever goes wrong there is named, and nothing above depends on it.
+  if WJ.diffQuestLog then WJ.guard("questLog", WJ.diffQuestLog)(true, true) end
+  if WJ.writeOpeningExtras then WJ.guard("openingExtras", WJ.writeOpeningExtras)() end
   if WJ.writeOpeningMoments then WJ.guard("openingMoments", WJ.writeOpeningMoments)() end
 end
 
@@ -457,16 +471,24 @@ end
 -- rate-limited so a persistent fault can't flood.
 ---------------------------------------------------------------------------
 
-function WJ.recordError(where, err)
+-- The fault as the recording keeps it: an ERR line, at most twenty a load, and the
+-- details in chat while debug is on. True when it is the first this load.
+local function noteError(where, err)
   errorCount = errorCount + 1
   if errorCount <= 20 then
     WJ.write("ERR", where, tostring(err))
   end
-  if errorCount == 1 then
+  if WJ.debug then print("|cffff4444WJ error in " .. where .. ":|r " .. tostring(err)) end
+  return errorCount == 1
+end
+
+-- A fault in a handler, hook or timer: noted, and said once a load, since the
+-- player asked for nothing and a fault that repeats would fill their chat.
+function WJ.recordError(where, err)
+  if noteError(where, err) then
     WJ.warn("something went wrong while recording (" .. tostring(where) .. "). " .. WJ.NAME ..
       " keeps recording; /widsith debug shows the details.")
   end
-  if WJ.debug then print("|cffff4444WJ error in " .. where .. ":|r " .. tostring(err)) end
 end
 
 local function run(where, fn, ...)
@@ -478,6 +500,24 @@ end
 -- C_Timer callbacks. `where` names it in the ERR line.
 function WJ.guard(where, fn)
   return function(...) run(where, fn, ...) end
+end
+
+-- A fault in something the player asked for, a typed command or a click: noted
+-- like any other, and always answered, in plain words and never as a raw error,
+-- since the player is waiting.
+local function answerFault(where, err)
+  noteError(where, err)
+  WJ.warn("that didn't work. " .. WJ.NAME .. " keeps recording; /widsith debug shows the details.")
+end
+
+-- The guard for the player's own actions: what the icon, its menu, the reminder
+-- and the settings panel run. Each action wraps itself where it is defined, so
+-- every button and menu item that calls it is covered.
+function WJ.attempt(where, fn)
+  return function(...)
+    local ok, err = pcall(fn, ...)
+    if not ok then answerFault(where, err) end
+  end
 end
 
 -- The game started this load without the recording file (see the boot below).
@@ -550,7 +590,7 @@ local USED_APIS = {
   "C_Reputation.GetFactionDataByID", "C_Reputation.GetNumFactions", "C_Reputation.GetFactionDataByIndex", "GetProfessions", "GetProfessionInfo", "GetAchievementInfo",
   "GetAverageItemLevel", "GetCritChance", "GetHaste", "GetMasteryEffect", "GetCombatRatingBonus",
   "GetVersatilityBonus", "C_SpecializationInfo.GetSpecialization", "C_SpecializationInfo.GetSpecializationInfo",
-  "GetSpecialization", "GetBindLocation", "Screenshot", "GetPhysicalScreenSize", "C_PetBattles.GetNumPets", "C_ChatInfo.PerformEmote",
+  "GetSpecialization", "GetBindLocation", "Screenshot", "GetPhysicalScreenSize", "C_PetBattles.IsInBattle", "C_PetBattles.GetNumPets", "C_PetBattles.GetPetSpeciesID", "C_PetBattles.IsWildBattle", "C_PetBattles.IsPlayerNPC", "C_ChatInfo.PerformEmote",
   "JumpOrAscendStart", "C_TradeSkillUI.CraftRecipe", "C_TradeSkillUI.IsTradeSkillReady",
   "C_TradeSkillUI.GetAllRecipeIDs", "C_TradeSkillUI.GetFilteredRecipeIDs", "C_TradeSkillUI.GetRecipeInfo",
   "C_TradeSkillUI.GetBaseProfessionInfo", "C_TradeSkillUI.IsTradeSkillLinked", "BuyMerchantItem", "C_MerchantFrame.GetItemInfo",
@@ -651,7 +691,7 @@ local HELP = {
   { "save", "reloads the interface, which writes the recording to disk." },
   { "icon", "shows or hides the recording icon." },
   { "options", "opens the settings panel." },
-  { "check", "provides internal diagnostic information." },
+  { "check", "names the game client and lists anything " .. WJ.NAME .. " uses that this client lacks." },
   { "debug", "echoes every line to chat as it is recorded." },
 }
 local HELP_TESTING = {
@@ -684,7 +724,7 @@ local function printSize()
 end
 
 local function handleCommand(msg)
-  local typed = msg:match("^(%S*)")
+  local typed = msg:match("^%s*(%S*)")
   local cmd = typed:lower()
   if cmd == "" then
     printStatus()
@@ -765,6 +805,7 @@ SLASH_WIDSITH1 = "/widsith"
 SlashCmdList.WIDSITH = function(msg)
   answering = true
   local ok, err = pcall(handleCommand, msg or "")
+  -- The player typed it and is waiting: answered as any action of theirs.
+  if not ok then answerFault("command", err) end
   answering = false
-  if not ok then error(err, 0) end
 end

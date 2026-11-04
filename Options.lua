@@ -42,7 +42,7 @@ end
 -- boxes so they can be copied (nothing can be opened from inside the game).
 local ABOUT = {
   { "What it does", WJ.NAME .. " keeps a record of your character's journey as you play: where you went, what you did and when." },
-  { "Saving", "The game writes the recording only when the interface reloads. The icon shrinks the longer you go unsaved; click it to save, which reloads." },
+  { "Saving", "The game writes the recording only when you log out or reload. The icon shrinks the longer you go unsaved; click it to save, which reloads." },
   { "Replaying", "Bring the recording to the website, or let the " .. WJ.NAME .. " uploader send it as you play, and watch the journey on the map." },
   { "Chat command", "/widsith, and /widsith help for the rest." },
 }
