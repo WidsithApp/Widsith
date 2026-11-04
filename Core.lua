@@ -306,8 +306,9 @@ end
 
 function WJ.endSession(reason)
   if not session then return end
-  -- A money change still waiting for its frame goes in before the end (Events.lua).
-  if WJ.flushMoney then WJ.flushMoney() end
+  -- A money change still waiting for its frame goes in before the end (Events.lua),
+  -- under its own guard, so a fault there can't keep the session from closing.
+  if WJ.flushMoney then WJ.guard("money", WJ.flushMoney)() end
   WJ.write("END", GetServerTime(), reason)
   flush()
   session.closed = true
@@ -525,7 +526,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
     end
     run(event, WJ.onEnteringWorld, isLogin, isReload)
   elseif event == "PLAYER_LOGOUT" then
-    WJ.endSession()
+    run(event, WJ.endSession)
+    -- Whatever went wrong above, the lines still in memory go into the file.
+    flush()
   else
     local handler = WJ.handlers[event]
     if handler then run(event, handler, ...) end
@@ -712,13 +715,8 @@ local function handleCommand(msg)
   elseif cmd == "save" then
     -- WoW only writes SavedVariables on logout or UI reload; there is no
     -- other way to force it. A crash loses everything since the last write.
-    if InCombatLockdown() then
-      print(PREFIX .. "can't reload the interface in combat; try again when the fight is over.")
-    else
-      -- The icon reads this after the reload and says the recording was saved.
-      if WidsithUI then WidsithUI.saving = true end
-      ReloadUI()
-    end
+    -- The same save as the icon's (Save.lua), with the same refusals.
+    if WJ.saveNow then WJ.saveNow() end
   elseif cmd == "icon" then
     if WJ.setIconShown then WJ.setIconShown(not WJ.iconShown()) end
   elseif cmd == "options" then
