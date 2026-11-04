@@ -68,8 +68,9 @@ end
 -- Saving is a reload. The flag survives it (the file is written on the way
 -- down), so the interface that comes back knows it was asked for and says so.
 -- Not while the game fails to read the file back (WJ.savesNotLoaded): a reload
--- then replaces the recording on disk.
-local function save()
+-- then replaces the recording on disk. The player's action, from the icon, the
+-- reminder, the settings panel or /widsith save: a fault is answered, never thrown.
+local save = WJ.attempt("save", function()
   if InCombatLockdown() then
     print(PREFIX .. "can't reload the interface in combat; try again when the fight is over.")
     return
@@ -80,7 +81,7 @@ local function save()
   end
   settings.saving = true
   ReloadUI()
-end
+end)
 
 -- An emote when the recording is saved, so the people nearby see what the
 -- character is doing: every reload writes the file, so the hook is on the
@@ -556,7 +557,8 @@ end
 
 WJ.saveNow = save
 
-function WJ.togglePause()
+-- The player's action, from the menu or the settings panel.
+WJ.togglePause = WJ.attempt("pause", function()
   if WJ.isRecording() then
     WJ.pause()
     hideBubble()
@@ -564,9 +566,10 @@ function WJ.togglePause()
     WJ.resume()
   end
   updateIcon()
-end
+end)
 
-local function openMenu(self)
+-- The player's action, a right click on the icon.
+local openMenu = WJ.attempt("menu", function(self)
   if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
   GameTooltip:Hide()
   MenuUtil.CreateContextMenu(self, function(_, root)
@@ -598,7 +601,7 @@ local function openMenu(self)
     end
     root:CreateButton("Hide icon", function() WJ.setIconShown(false) end)
   end)
-end
+end)
 
 -- A scale animation about the base, once, in a group of its own.
 local function scaleFromBase(group, from, to, seconds, smoothing)
@@ -842,13 +845,14 @@ end
 -- The addon menu by the minimap (TOC: AddonCompartmentFunc). Clicking the
 -- entry opens the options panel, where a hidden icon can always be brought
 -- back; on a client with no such panel it shows or hides the icon instead.
-function Widsith_OnAddonCompartmentClick()
+-- The player's action, from the addon compartment on the minimap.
+Widsith_OnAddonCompartmentClick = WJ.attempt("compartment", function()
   if WJ.openOptions then
     WJ.openOptions()
   else
     WJ.setIconShown(not WJ.iconShown())
   end
-end
+end)
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")

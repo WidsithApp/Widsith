@@ -489,6 +489,24 @@ function WJ.guard(where, fn)
   return function(...) run(where, fn, ...) end
 end
 
+-- A fault in something the player asked for, a typed command or a click: noted
+-- like any other, and always answered, in plain words and never as a raw error,
+-- since the player is waiting.
+local function answerFault(where, err)
+  noteError(where, err)
+  WJ.warn("that didn't work. " .. WJ.NAME .. " keeps recording; /widsith debug shows the details.")
+end
+
+-- The guard for the player's own actions: what the icon, its menu, the reminder
+-- and the settings panel run. Each action wraps itself where it is defined, so
+-- every button and menu item that calls it is covered.
+function WJ.attempt(where, fn)
+  return function(...)
+    local ok, err = pcall(fn, ...)
+    if not ok then answerFault(where, err) end
+  end
+end
+
 -- The game started this load without the recording file (see the boot below).
 -- Written into the recording, said once in chat, and the save reminder stops:
 -- while the client can't read the file back, every reload replaces it. (Early
@@ -774,12 +792,7 @@ SLASH_WIDSITH1 = "/widsith"
 SlashCmdList.WIDSITH = function(msg)
   answering = true
   local ok, err = pcall(handleCommand, msg or "")
-  if not ok then
-    -- The player typed it and is waiting, so a fault here is always answered, in
-    -- plain words and never as a raw error, and noted like any other.
-    noteError("command", err)
-    WJ.warn("that command didn't work. " .. WJ.NAME ..
-      " keeps recording; /widsith debug shows the details.")
-  end
+  -- The player typed it and is waiting: answered as any action of theirs.
+  if not ok then answerFault("command", err) end
   answering = false
 end

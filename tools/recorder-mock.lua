@@ -1256,6 +1256,25 @@ fire("UNIT_AURA", "player", { addedAuras = { { name = "Renew", spellId = 139, is
 local refusedInEncounter = auraRefusals - refusedBefore
 C_Secrets = secrets
 encounter = false
+
+-- a click whose action throws: no Lua error reaches the player, the fault is an ERR line like
+-- any other, and the player is answered. The icon's file isn't loaded here, so the guard the
+-- icon's actions wrap themselves in is pressed as the menu's Pause would press it
+do
+  local realWrite, realWarn = addonTable.write, addonTable.warn
+  local noted, answered
+  addonTable.write = function(kind, where, what) if kind == "ERR" then noted = where .. ": " .. tostring(what) end end
+  addonTable.warn = function(text) answered = text end
+  addonTable.attempt("pause", function() error("boom") end)()
+  addonTable.write, addonTable.warn = realWrite, realWarn
+  if not (noted and noted:find("^pause: ") and noted:find("boom", 1, true)) then
+    realPrint("-- expect FAIL: a click's fault wasn't noted as ERR pause: " .. tostring(noted))
+  end
+  if not (answered and answered:find("didn't work", 1, true)) then
+    realPrint("-- expect FAIL: a click's fault wasn't answered in chat: " .. tostring(answered))
+  end
+  if not addonTable.isRecording() then realPrint("-- expect FAIL: a failed pause stopped the recording") end
+end
 fire("PLAYER_LOGOUT")
 
 -- What the session that opened in a fight must hold, checked line by line.
