@@ -488,8 +488,8 @@ end
 ---------------------------------------------------------------------------
 
 -- Two independent facts about a kill:
---   KILL  from PARTY_KILL — attributed, but silent inside instances and
---         for a pet's killing blow.
+--   KILL  from PARTY_KILL — attributed, but silent for a pet's killing blow;
+--         inside instances it fires with the GUID hidden.
 --   TDIED from PLAYER_TARGET_DIED — fires for our target's death whoever
 --         landed the blow; the GUID is secret inside instances.
 -- When both describe the same unit in the same second, TDIED is dropped.
