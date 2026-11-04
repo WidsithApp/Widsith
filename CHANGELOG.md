@@ -2,6 +2,16 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
+## 0.6.1 · 2026-11-04
+
+- A second setting, "Show chat in the pictures", keeps your chat windows in the screenshots Widsith takes. The friends list, the guild window and Battle.net pop-ups are always hidden. It is off unless you turn it on.
+- The two screenshot settings sit together in the icon's menu, under Screenshots. In the settings panel the chat one is greyed until "Screenshot highlights" is on.
+- A reputation gain inside a dungeon or raid, where the game hides its message, no longer shows a Problem in chat.
+- After a reload, the last fight from before it is no longer recorded again when your next combat ends.
+- Quests and trades inside instances are recorded even when the game hides who the quest giver or the other player is.
+- A highlight screenshot due in the same second as one of your own now waits a second, so it no longer replaces your picture.
+- The README now covers the screenshots, your guild, the other players a recording names, and `/widsith size`.
+
 ## 0.6.0 · 2026-11-02
 
 - A new setting, "Screenshot highlights", takes a screenshot when you reach a new level, defeat a boss for the first time, enter a zone or an instance for the first time, summon your first mount or die for the first time, and at every death on a Hardcore realm. Chat, the friends list and the guild window are hidden for the picture, and a tiny mark goes in its corner. The pictures go in your Screenshots folder. Your own screenshots aren't touched. It is off unless you turn it on, in the icon's menu or under Options, AddOns, Widsith.
