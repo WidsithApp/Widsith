@@ -1317,17 +1317,17 @@ end
 -- Opening state, written with the first snapshot (Core.openingState)
 ---------------------------------------------------------------------------
 
+-- Each guarded on its own, so whatever goes wrong there is named and the rest is still written.
 function WJ.writeOpeningExtras()
   opened = true
-  writeSkills(true)
-  writeReputations()
-  writeCurrencies()
-  writeSpec(true)
-  -- Each guarded on its own, so whatever goes wrong there is named and the rest is still written.
+  WJ.guard("skills", writeSkills)(true)
+  WJ.guard("reputations", writeReputations)()
+  WJ.guard("currencies", writeCurrencies)()
+  WJ.guard("spec", writeSpec)(true)
   WJ.guard("talents", writeTalents)()
   WJ.guard("gear sets", writeGearSets)()
-  if GetBindLocation then write("BIND", GetBindLocation()) end
-  writeGuild()
+  WJ.guard("bind", function() if GetBindLocation then write("BIND", GetBindLocation()) end end)()
+  WJ.guard("guild", writeGuild)()
 end
 
 -- A session resumed after a pause writes the character sheet afresh

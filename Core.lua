@@ -451,15 +451,16 @@ end
 -- yet in this session: quest titles (QLABEL), professions (SKILL), reputations (REP), currencies (CURRENCY), spec,
 -- talents, gear sets, hearth location, the weather and the time of day, the rules played under,
 -- auras and the game's counters. Written once the client has loaded that data.
+-- Each step under a guard of its own, so whatever goes wrong in one is named
+-- and the rest is still written: none depends on another.
 function WJ.openingState()
-  WJ.snapshot(true)
+  WJ.guard("snapshot", WJ.snapshot)(true)
   if WJ.writeOpeningWorld then WJ.guard("openingWorld", WJ.writeOpeningWorld)() end
-  if WJ.writeQuestLabels then WJ.writeQuestLabels() end
+  if WJ.writeQuestLabels then WJ.guard("questLabels", WJ.writeQuestLabels)() end
   -- The quest log's state as the session begins (Events.lua): the cache seeded, the quests
   -- already ready to turn in written as such.
-  if WJ.diffQuestLog then WJ.diffQuestLog(true, true) end
-  if WJ.writeOpeningExtras then WJ.writeOpeningExtras() end
-  -- Guarded on its own: whatever goes wrong there is named, and nothing above depends on it.
+  if WJ.diffQuestLog then WJ.guard("questLog", WJ.diffQuestLog)(true, true) end
+  if WJ.writeOpeningExtras then WJ.guard("openingExtras", WJ.writeOpeningExtras)() end
   if WJ.writeOpeningMoments then WJ.guard("openingMoments", WJ.writeOpeningMoments)() end
 end
 

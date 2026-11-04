@@ -290,7 +290,7 @@ local function setBreathing(on)
       if not group:IsPlaying() then
         -- The heart a moment behind the layer before it.
         if i == #layers then
-          C_Timer.After(0.3, function() if layer.breathe and not layer.breathe:IsPlaying() and layer:IsShown() then layer.breathe:Play() end end)
+          C_Timer.After(0.3, WJ.guard("breathe", function() if layer.breathe and not layer.breathe:IsPlaying() and layer:IsShown() then layer.breathe:Play() end end))
         else
           group:Play()
         end
@@ -752,15 +752,17 @@ local function createIcon()
     settings.ringAngle = math.atan2(cy - my, cx - mx)
     placeIcon()
   end
-  icon:SetScript("OnDragStart", function(self)
+  -- The icon's own scripts run under the guard like every handler: a fault in one is
+  -- named, and never a raw error.
+  icon:SetScript("OnDragStart", WJ.guard("iconDrag", function(self)
     if settings.locked then return end
     if onRing() then
       self:SetScript("OnUpdate", WJ.guard("iconDrag", followCursor))
     else
       self:StartMoving()
     end
-  end)
-  icon:SetScript("OnDragStop", function(self)
+  end))
+  icon:SetScript("OnDragStop", WJ.guard("iconDrag", function(self)
     if onRing() then
       self:SetScript("OnUpdate", nil)
       if bubble and bubble:IsShown() then placeBubble() end
@@ -773,19 +775,19 @@ local function createIcon()
     local k = toIconUnits()
     settings.point = { point, relativePoint, x / k, y / k }
     if bubble and bubble:IsShown() then placeBubble() end
-  end)
+  end))
   -- A left click saves: the flame that burns down to ask for a save is also the
   -- answer. The right button opens the menu. A drag never counts as a click.
-  icon:SetScript("OnClick", function(self, button)
+  icon:SetScript("OnClick", WJ.guard("iconClick", function(self, button)
     if button == "RightButton" then
       openMenu(self)
     else
       GameTooltip:Hide()
       save()
     end
-  end)
-  icon:SetScript("OnEnter", showTooltip)
-  icon:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  end))
+  icon:SetScript("OnEnter", WJ.guard("iconTooltip", showTooltip))
+  icon:SetScript("OnLeave", WJ.guard("iconTooltip", function() GameTooltip:Hide() end))
 
   -- Modern clients snap textures to the screen's pixel grid, which steps the edges of
   -- anything drawn at a scale; the icon's parts are scaled, so they draw unsnapped.
@@ -858,7 +860,7 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-frame:SetScript("OnEvent", function(self, event, ...)
+frame:SetScript("OnEvent", WJ.guard("icon", function(self, event, ...)
   if event == "ADDON_LOADED" then
     if (...) ~= ADDON_NAME then return end
     WidsithUI = WidsithUI or {}
@@ -890,4 +892,4 @@ frame:SetScript("OnEvent", function(self, event, ...)
       say("saved.")
     end
   end
-end)
+end))
