@@ -457,16 +457,24 @@ end
 -- rate-limited so a persistent fault can't flood.
 ---------------------------------------------------------------------------
 
-function WJ.recordError(where, err)
+-- The fault as the recording keeps it: an ERR line, at most twenty a load, and the
+-- details in chat while debug is on. True when it is the first this load.
+local function noteError(where, err)
   errorCount = errorCount + 1
   if errorCount <= 20 then
     WJ.write("ERR", where, tostring(err))
   end
-  if errorCount == 1 then
+  if WJ.debug then print("|cffff4444WJ error in " .. where .. ":|r " .. tostring(err)) end
+  return errorCount == 1
+end
+
+-- A fault in a handler, hook or timer: noted, and said once a load, since the
+-- player asked for nothing and a fault that repeats would fill their chat.
+function WJ.recordError(where, err)
+  if noteError(where, err) then
     WJ.warn("something went wrong while recording (" .. tostring(where) .. "). " .. WJ.NAME ..
       " keeps recording; /widsith debug shows the details.")
   end
-  if WJ.debug then print("|cffff4444WJ error in " .. where .. ":|r " .. tostring(err)) end
 end
 
 local function run(where, fn, ...)
@@ -684,7 +692,7 @@ local function printSize()
 end
 
 local function handleCommand(msg)
-  local typed = msg:match("^(%S*)")
+  local typed = msg:match("^%s*(%S*)")
   local cmd = typed:lower()
   if cmd == "" then
     printStatus()
@@ -765,6 +773,12 @@ SLASH_WIDSITH1 = "/widsith"
 SlashCmdList.WIDSITH = function(msg)
   answering = true
   local ok, err = pcall(handleCommand, msg or "")
+  if not ok then
+    -- The player typed it and is waiting, so a fault here is always answered, in
+    -- plain words and never as a raw error, and noted like any other.
+    noteError("command", err)
+    WJ.warn("that command didn't work. " .. WJ.NAME ..
+      " keeps recording; /widsith debug shows the details.")
+  end
   answering = false
-  if not ok then error(err, 0) end
 end
