@@ -1284,6 +1284,25 @@ expect(framesWithReads >= 4, "the counters were read in " .. framesWithReads .. 
 expect(byIDReads > 0, "no counter was read by ID: every pass after the first should be")
 
 -- Session 1: the currencies at the opening, each fight's line and when, the emotes.
+-- a command whose body throws, typed with spaces before it: no Lua error reaches the player,
+-- the fault is an ERR line like any other, and the command is answered in chat. Last, since the
+-- fault counts in the health the status line reports from here on.
+do
+  local realCheck, realWrite, realWarn = addonTable.printClientCheck, addonTable.write, addonTable.warn
+  local noted, answered
+  addonTable.printClientCheck = function() error("boom") end
+  addonTable.write = function(kind, where, what) if kind == "ERR" then noted = where .. ": " .. tostring(what) end end
+  addonTable.warn = function(text) answered = text end
+  SlashCmdList.WIDSITH("  check")
+  addonTable.printClientCheck, addonTable.write, addonTable.warn = realCheck, realWrite, realWarn
+  if not (noted and noted:find("^command: ") and noted:find("boom", 1, true)) then
+    realPrint("-- expect FAIL: a command's fault wasn't noted as ERR command: " .. tostring(noted))
+  end
+  if not (answered and answered:find("didn't work", 1, true)) then
+    realPrint("-- expect FAIL: a command's fault wasn't answered in chat: " .. tostring(answered))
+  end
+end
+
 local function lines(session)
   local out = {}
   for line in (table.concat(session.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
