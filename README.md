@@ -13,11 +13,12 @@ Widsith writes down facts as the game reports them, with the game's own IDs, at 
 - kills, deaths, loot, money, levels and experience;
 - each fight, as one summary from the game's own damage meter once the fight ends, never a line per blow;
 - reputation, professions and recipes, skills, achievements, currencies, gear, gear sets, talents, specialisation and the character sheet's stats;
-- groups, trades, buying and selling at vendors, mounts, pet battles, discoveries and what NPCs say.
+- your group, your own guild, trades, buying and selling at vendors, mounts, pet battles, duels, discoveries and what NPCs say;
+- that a screenshot was taken, whether it was yours or one of Widsith's own highlights (see Screenshots below).
 
-It keeps no chat: nothing you or other players type is written. Names are kept beside IDs only as labels for reading.
+It keeps no chat: nothing you or other players type is written. Names are kept beside IDs only as labels for reading. Other players are named only where the game names them to you: the members of your group, the players you trade with, a player who casts a buff on you, a player who dealt one of the hits in your death recap, and the players you duel.
 
-Widsith never connects to anything, as no WoW addon can. Everything stays in its saved file on your computer, which the game writes each time you log out or reload the interface. You take that file to widsith.app yourself, or let the Widsith Uploader app send it for you.
+Widsith never connects to anything, as no WoW addon can. Everything stays on your computer. The recording is kept in its saved file, which the game writes each time you log out or reload the interface. You take that file to widsith.app yourself, or let the Widsith Uploader app send it for you. The screenshots Widsith takes, if you turn them on, are pictures only, and they stay in the game's own Screenshots folder beside yours.
 
 The saved file is `WTF\Account\<account>\<realm>\<character>\SavedVariables\Widsith.lua`, one per character.
 
@@ -39,6 +40,7 @@ Each version is also on this repository's Releases page as a zip, built from its
 - `/widsith` says whether Widsith is recording.
 - `/widsith help` lists the commands.
 - `/widsith about` gives the version, what Widsith is, and the website.
+- `/widsith size` says how big the recording is and which sessions are the largest.
 - `/widsith pause` stops recording until `/widsith resume`, or until the next login or reload.
 - `/widsith save` reloads the interface so the game writes the saved file.
 - `/widsith icon` shows or hides the recording icon.

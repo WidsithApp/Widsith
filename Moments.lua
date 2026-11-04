@@ -75,7 +75,8 @@ local TAKEN   = meterTypes.DamageTaken or 7
 local HEALED  = meterTypes.HealingDone or 2
 local ENEMIES = meterTypes.EnemyDamageTaken or 10
 
--- The last line written: the meter's session ID and the duration it reported then.
+-- The last line written: the meter's session ID and the duration it reported then
+-- (none for the fight already on the meter when the session began; see seedMoments).
 local lastFight
 
 local function haveMeter()
@@ -795,11 +796,13 @@ end
 
 -- At session start: the meter's newest fight is from before this session, and
 -- must never be written as one that just ended.
+-- It stands as the last fight written, with no duration, so writeFight passes
+-- over it until the meter starts a new one.
 function WJ.seedMoments()
-  lastFightID = nil
+  lastFight = nil
   if haveMeter() then
     local ok, id = pcall(newestFight)
-    if ok then lastFightID = id end
+    if ok and id ~= nil then lastFight = { id = id } end
   end
 end
 

@@ -231,7 +231,7 @@ local function writeReputations()
 end
 
 handlers.CHAT_MSG_COMBAT_FACTION_CHANGE = function(msg)
-  if type(msg) ~= "string" then return end
+  if type(msg) ~= "string" or secret(msg) then return end
   ensureFactionPatterns()
   for _, p in ipairs(factionPatterns) do
     local name, amount = msg:match(p.pattern)
@@ -1097,7 +1097,9 @@ local function readTrade()
   name, realm = WJ.field(name), WJ.field(realm)
   if realm == "" then realm = WJ.field(GetNormalizedRealmName()) end
   trade = trade or {}
-  trade.guid = UnitGUID("NPC") or trade.guid
+  local guid = UnitGUID("NPC")
+  if secret(guid) then guid = nil end
+  trade.guid = guid or trade.guid
   if name ~= "" then trade.name = name .. "-" .. realm end
   trade.gaveMoney = ask(GetPlayerTradeMoney, 1)
   trade.gotMoney = ask(GetTargetTradeMoney, 1)
