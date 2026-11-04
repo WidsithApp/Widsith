@@ -546,8 +546,12 @@ for _, file in ipairs({ "Core.lua", "Position.lua", "Events.lua", "Extras.lua", 
   assert(loadfile(DIR .. file))(ADDON, addonTable)
 end
 -- The icon's settings live in Save.lua; only the one that matters here.
-local screenshotsOn = false
-addonTable.getIconSetting = function(key) return key == "screenshots" and screenshotsOn end
+local screenshotsOn, chatInShots = false, false
+addonTable.getIconSetting = function(key)
+  if key == "screenshots" then return screenshotsOn end
+  if key == "shotsChat" then return chatInShots end
+  return false
+end
 
 fire("ADDON_LOADED", ADDON)
 local firstSessionAt = clock
@@ -739,6 +743,17 @@ mapNow = 41
 addonTable.zoneChanged()
 advance(4)
 shots(11, "that zone, on coming back")
+-- with "Show chat in the pictures" on, chat stays, the social windows still go, and the line says so
+chatInShots = true
+advance(2)
+mapNow = 42
+addonTable.zoneChanged()
+advance(4)
+shots(12, "a zone with chat left in")
+bigExpect(chatAtShot == 0.8, "chat was hidden though the setting leaves it in")
+bigExpect(friendsAtShot == 0, "the friends list was showing with chat left in")
+bigExpect(FriendsFrame.alpha == 1, "the friends list didn't come back with chat left in")
+chatInShots = false
 addonTable.currentPosition = realPosition
 screenshotsOn = false
 local chatBefore = ChatFrame1.alpha
@@ -1527,7 +1542,7 @@ local function kindIs(kind, want)
   local got = table.concat(byKind[kind] or {}, " / ")
   expect(got == table.concat(want, " / "), kind .. " lines aren't " .. table.concat(want, " / ") .. ": " .. got)
 end
-kindIs("SHOT", { "level", "boss", "boss", "death", "death", "instance", "zone", "zone", "zone", "" })
+kindIs("SHOT", { "level", "boss", "boss", "death", "death", "instance", "zone", "zone", "zone", "zone 1", "" })
 kindIs("WEATHER", { "1 0.5000", "1 0.8000" })
 kindIs("DAYLIGHT", { "1", "0" })
 kindIs("BROKEN", { "8 3003" })

@@ -502,9 +502,10 @@ local function showTooltip(self)
 end
 
 -- The settings, as the menu here and the options panel (Options.lua) read and
--- change them: shown, remind, animate, chat, emote, onRing, locked and iconSize. Every
--- change goes through here, so the icon follows at once whichever asked. Emote is
--- the one that is off unless it has been set true; the others are on unless false.
+-- change them: shown, remind, animate, chat, emote, onRing, locked, iconSize,
+-- screenshots and shotsChat. Every change goes through here, so the icon follows
+-- at once whichever asked. Emote, screenshots and shotsChat are off unless they
+-- have been set true; the others are on unless false.
 local function setOnRing(on)
   if onRing() and not on then
     -- Leaving the ring: stay exactly where it is, now free to drag anywhere.
@@ -575,18 +576,20 @@ local function openMenu(self)
     elseif WJ.isPaused() then
       root:CreateButton("Resume recording", WJ.togglePause)
     end
-    local function checkbox(name, key)
-      root:CreateCheckbox(name,
+    local function checkbox(menu, name, key)
+      menu:CreateCheckbox(name,
         function() return WJ.getIconSetting(key) end,
         function() WJ.setIconSetting(key, not WJ.getIconSetting(key)) end)
     end
-    checkbox("Remind me to save", "remind")
-    checkbox("Animations", "animate")
-    checkbox("Attach to minimap", "onRing")
-    checkbox("Lock position", "locked")
-    checkbox("Show chat messages", "chat")
-    checkbox("Emote when saving", "emote")
-    checkbox("Screenshot highlights", "screenshots")
+    checkbox(root, "Remind me to save", "remind")
+    checkbox(root, "Animations", "animate")
+    checkbox(root, "Attach to minimap", "onRing")
+    checkbox(root, "Lock position", "locked")
+    checkbox(root, "Show chat messages", "chat")
+    checkbox(root, "Emote when saving", "emote")
+    local shots = root:CreateButton("Screenshots")
+    checkbox(shots, "Screenshot highlights", "screenshots")
+    checkbox(shots, "Show chat in the pictures", "shotsChat")
     local sizes = root:CreateButton("Icon size")
     for _, entry in ipairs(SIZES) do
       sizes:CreateRadio(entry[2],

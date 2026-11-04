@@ -7,13 +7,14 @@
 -- a Hardcore realm. Those lines say which moment it was, which tells them from
 -- the player's.
 --
--- For the length of one of its own shots the addon hides chat, whispers
--- included, and the social windows, where friends' real names can show, and
--- draws a small mark in the very corner of the screen, worked out from the
--- character, the session and the second. The game answers within about
--- a tenth of a second and both go back. Chat frames aren't protected, so this
--- works in combat. What is hidden is made transparent rather than hidden, which
--- would disturb how the windows are docked.
+-- For the length of one of its own shots the addon hides the social windows,
+-- where friends' real names and BattleTags can show, and chat as well, whispers
+-- included, unless "Show chat in the pictures" is on; and it draws a small mark
+-- in the very corner of the screen, worked out from the character, the session
+-- and the second. The game answers within about a tenth of a second and
+-- everything goes back. Chat frames aren't protected, so this works in combat.
+-- What is hidden is made transparent rather than hidden, which would disturb
+-- how the windows are docked. The line says when chat was left in the picture.
 
 local _, WJ = ...
 
@@ -39,21 +40,25 @@ local MOMENTS = {
 local MARK_PATCHES, MARK_PIXELS = 4, 2   -- four patches, 2 by 2 pixels, each one of 64 colours
 local MARK_LEVELS = { 0, 85 / 255, 170 / 255, 1 }
 
--- The parts Blizzard's code moves together with chat, the pop-ups beside it,
--- and the social windows: the friends list with its tooltip and friends-of-
--- friends dialog, and the guild and communities window, which carries chat.
+-- The parts Blizzard's code moves together with chat, and the buttons beside it.
 local CHAT_WINDOW_PARTS = { "", "Tab", "EditBox", "ButtonFrame", "Minimized" }
 local CHAT_SHARED_PARTS = {
-  "GeneralDockManager", "ChatMenu", "TextToSpeechButtonFrame", "QuickJoinToastButton",
+  "GeneralDockManager", "ChatMenu", "TextToSpeechButtonFrame",
   "ChatFrameMenuButton", "ChatFrameChannelButton", "ChatFrameToggleVoiceDeafenButton",
-  "ChatFrameToggleVoiceMuteButton", "ChatAlertFrame", "BNToastFrame",
+  "ChatFrameToggleVoiceMuteButton",
+}
+-- The social windows, hidden whatever the settings say: the friends list with
+-- its tooltip and friends-of-friends dialog, the guild and communities window,
+-- which carries chat, and the Battle.net and whisper pop-ups, which name people.
+local SOCIAL_PARTS = {
   "FriendsFrame", "FriendsTooltip", "FriendsFriendsFrame", "CommunitiesFrame",
+  "BNToastFrame", "QuickJoinToastButton", "ChatAlertFrame",
 }
 
 local pending          -- the moment waiting for its picture
 local taking           -- which moment the screenshot now being taken is for
 local lastShotAt, lastShotRank
-local hiddenChat = {}  -- frame -> the alpha to put back
+local hidden = {}      -- frame -> the alpha to put back
 local mark, patches
 
 ---------------------------------------------------------------------------
@@ -68,10 +73,10 @@ local function seenList(why)
 end
 
 ---------------------------------------------------------------------------
--- Chat
+-- What leaves the screen for the picture
 ---------------------------------------------------------------------------
 
-local function chatParts()
+local function partsToHide(chatToo)
   local parts, seen = {}, {}
   local function add(frame)
     if type(frame) == "table" and frame.SetAlpha and not seen[frame] then
@@ -79,26 +84,29 @@ local function chatParts()
       parts[#parts + 1] = frame
     end
   end
-  for _, name in pairs(CHAT_FRAMES or {}) do
-    for _, suffix in ipairs(CHAT_WINDOW_PARTS) do add(_G[name .. suffix]) end
+  for _, name in ipairs(SOCIAL_PARTS) do add(_G[name]) end
+  if chatToo then
+    for _, name in pairs(CHAT_FRAMES or {}) do
+      for _, suffix in ipairs(CHAT_WINDOW_PARTS) do add(_G[name .. suffix]) end
+    end
+    for _, name in ipairs(CHAT_SHARED_PARTS) do add(_G[name]) end
   end
-  for _, name in ipairs(CHAT_SHARED_PARTS) do add(_G[name]) end
   return parts
 end
 
-local function hideChat()
-  for _, frame in ipairs(chatParts()) do
+local function hideParts(chatToo)
+  for _, frame in ipairs(partsToHide(chatToo)) do
     local ok, alpha = pcall(frame.GetAlpha, frame)
     if not ok or type(alpha) ~= "number" or (issecretvalue and issecretvalue(alpha)) then alpha = 1 end
-    hiddenChat[frame] = alpha
+    hidden[frame] = alpha
     pcall(frame.SetAlpha, frame, 0)
   end
 end
 
-local function showChat()
-  for frame, alpha in pairs(hiddenChat) do
+local function showParts()
+  for frame, alpha in pairs(hidden) do
     pcall(frame.SetAlpha, frame, alpha)
-    hiddenChat[frame] = nil
+    hidden[frame] = nil
   end
 end
 
@@ -160,26 +168,32 @@ end
 
 local function putBack()
   taking = nil
-  showChat()
+  showParts()
   if mark then mark:Hide() end
 end
 
 local function take(moment)
-  local this = { why = moment.why }
+  local this = { why = moment.why, chatShown = WJ.getIconSetting("shotsChat") == true }
   taking = this
   lastShotAt, lastShotRank = GetTime(), MOMENTS[moment.why].rank
   if moment.key ~= nil then seenList(moment.why)[moment.key] = true end
-  -- First, so that nothing that goes wrong below can leave chat hidden.
+  -- First, so that nothing that goes wrong below can leave anything hidden.
   C_Timer.After(ANSWER_WAIT, function()
     if taking == this then putBack() end
   end)
-  hideChat()
+  hideParts(not this.chatShown)
   showMark()
   Screenshot()
 end
 
 handlers.SCREENSHOT_SUCCEEDED = function()
-  if taking then write("SHOT", taking.why) else write("SHOT") end
+  if not taking then
+    write("SHOT")
+  elseif taking.chatShown then
+    write("SHOT", taking.why, 1)
+  else
+    write("SHOT", taking.why)
+  end
   counts.shots = counts.shots + 1
   if taking then putBack() end
 end
