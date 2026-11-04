@@ -18,14 +18,15 @@ local category
 
 -- What each setting is when nothing has been changed: the panel's Defaults
 -- button puts these back.
-local DEFAULTS = { shown = true, remind = true, animate = true, chat = true, emote = false, onRing = true, locked = false, iconSize = 1, screenshots = false }
+local DEFAULTS = { shown = true, remind = true, animate = true, chat = true, emote = false, onRing = true, locked = false, iconSize = 1, screenshots = false, shotsChat = false }
 
+-- The row and the setting behind it, so a row can be made to depend on another.
 local function checkbox(name, key, tooltip)
   local setting = Settings.RegisterProxySetting(category, "WIDSITH_" .. key:upper(), Settings.VarType.Boolean, name,
     DEFAULTS[key],
     function() return WJ.getIconSetting(key) end,
     function(value) WJ.setIconSetting(key, value) end)
-  Settings.CreateCheckbox(category, setting, tooltip)
+  return Settings.CreateCheckbox(category, setting, tooltip), setting
 end
 
 local function sizeOptions()
@@ -133,7 +134,11 @@ local function createPanel()
   Settings.CreateDropdown(category, sizeSetting, sizeOptions, "Small is the size of the day and night dial beside it.")
 
   layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("The recording"))
-  checkbox("Screenshot highlights", "screenshots", "Takes a screenshot with chat and the friends list hidden at the highlights of your journey, such as a new level, a boss's first defeat or your first time in a zone. The pictures go in your Screenshots folder with a tiny mark in the corner, and your own screenshots aren't touched. Off unless you turn it on.")
+  local shots, shotsOn = checkbox("Screenshot highlights", "screenshots", "Takes a screenshot at the highlights of your journey, such as a new level, a boss's first defeat or your first time in a zone, with chat and the friends list hidden. The pictures go in your Screenshots folder with a tiny mark in the corner, and your own screenshots aren't touched. Off unless you turn it on.")
+  local chat = checkbox("Show chat in the pictures", "shotsChat", "Leaves your chat windows in the pictures, whispers included. The friends list, the guild window and Battle.net pop-ups are always hidden. Off unless you turn it on.")
+  -- Indented under the setting it depends on and greyed while that is off, as
+  -- the game's own dependent settings are.
+  chat:SetParentInitializer(shots, function() return shotsOn:GetValue() end)
   layout:AddInitializer(CreateSettingsButtonInitializer("Save the recording", "Save now",
     function() if WJ.saveNow then WJ.saveNow() end end,
     "Reloads the interface, which is the only way the game writes the file: a few seconds of loading screen, then you carry on. Not in combat.", true))
