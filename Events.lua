@@ -95,8 +95,9 @@ local function writeZoneIfChanged()
   local zone, subzone = GetZoneText(), GetSubZoneText()
   if zone ~= lastZone or subzone ~= lastSubzone then
     write("ZONE", zone, subzone)
-    WJ.zoneChanged()
+    -- Noted as written before anything else runs, so a fault below can't write it twice.
     lastZone, lastSubzone = zone, subzone
+    WJ.zoneChanged()
   end
 end
 
@@ -291,7 +292,7 @@ local lastGiverGUID, lastGiverTime = nil, 0
 local GIVER_WINDOW = 10
 
 local function rememberGiver()
-  local guid = UnitGUID("npc") or UnitGUID("questnpc")
+  local guid = plainString(UnitGUID("npc")) or plainString(UnitGUID("questnpc"))
   if guid then
     lastGiverGUID, lastGiverTime = guid, GetTime()
     -- The interaction manager never announces a quest-giver frame (type 4):
@@ -305,7 +306,7 @@ handlers.QUEST_COMPLETE = rememberGiver
 handlers.QUEST_PROGRESS = rememberGiver
 
 local function giverGUID()
-  local guid = UnitGUID("npc") or UnitGUID("questnpc")
+  local guid = plainString(UnitGUID("npc")) or plainString(UnitGUID("questnpc"))
   if guid then return guid end
   if lastGiverGUID and GetTime() - lastGiverTime <= GIVER_WINDOW then
     return lastGiverGUID

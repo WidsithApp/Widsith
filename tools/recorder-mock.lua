@@ -153,6 +153,8 @@ function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 local profileMs = 0
 function debugprofilestop() return profileMs end
 function GetServerTime() return 1790766000 + math.floor(clock) end
+-- The computer's own clock, which names screenshot files; here the same as the realm's.
+function time() return 1790766000 + math.floor(clock) end
 -- Another player's name from their GUID, as the game knows it; nothing for one it hasn't met.
 function GetPlayerInfoByGUID(guid)
   if guid == "Player-4747-0BBBBBBB" then return "Paladin", "PALADIN", "Human", "Human", 2, "Someone", "" end
@@ -754,6 +756,25 @@ bigExpect(chatAtShot == 0.8, "chat was hidden though the setting leaves it in")
 bigExpect(friendsAtShot == 0, "the friends list was showing with chat left in")
 bigExpect(FriendsFrame.alpha == 1, "the friends list didn't come back with chat left in")
 chatInShots = false
+-- the player's own screenshot in the second a highlight falls due: the highlight waits for the
+-- next second, so its file can't replace theirs
+local clockBeforeOwn = clock
+advance(2 + math.ceil(clock) - clock)   -- past the gap, to a whole second
+addonTable.highlightShot("level")
+advance(1.4)
+fire("SCREENSHOT_SUCCEEDED")   -- the player's own, in the second the level's picture is due
+advance(0.3)
+shots(12, "a highlight in the same second as the player's own")
+advance(1)
+shots(13, "a highlight a second after the player's own")
+-- the setting turned off while a picture waits: none is taken
+advance(2)
+addonTable.highlightShot("level")
+screenshotsOn = false
+advance(3)
+shots(13, "a highlight after the setting was turned off")
+-- whole seconds in all, so the once-a-second tick keeps its place for what follows
+advance(math.ceil(clock - clockBeforeOwn) - (clock - clockBeforeOwn))
 addonTable.currentPosition = realPosition
 screenshotsOn = false
 local chatBefore = ChatFrame1.alpha
@@ -839,6 +860,15 @@ talent.secretNode = true
 fire("TRAIT_CONFIG_UPDATED", 102)
 advance(1)
 talent.secretNode = false
+
+-- combat the meter keeps no session for: its newest is still the fight from before the session,
+-- which is no fight that just ended
+inCombat = true
+fire("PLAYER_REGEN_DISABLED")
+advance(2)
+inCombat = false
+fire("PLAYER_REGEN_ENABLED")
+advance(2)
 
 -- a fight, with everything hidden while it lasts
 inCombat = true
@@ -1289,6 +1319,7 @@ expect(fightAfterLeave["91"] == 1000, "a fight whose amounts were still hidden a
 for id, n in pairs(fightCount) do
   expect(n == (id == "91" and 2 or 1), "the meter's session " .. id .. " was written " .. n .. " times")
 end
+expect(fightCount["88"] == nil, "the meter's fight from before the session was written when a later combat ended")
 expect(fightAfterLeave["92"] == 0 and fightCount["92"] == 1,
   "a fight written whole at the instant was written again a second later, when only the meter's clock had moved on: "
   .. tostring(fightCount["92"]) .. " lines")
@@ -1542,7 +1573,7 @@ local function kindIs(kind, want)
   local got = table.concat(byKind[kind] or {}, " / ")
   expect(got == table.concat(want, " / "), kind .. " lines aren't " .. table.concat(want, " / ") .. ": " .. got)
 end
-kindIs("SHOT", { "level", "boss", "boss", "death", "death", "instance", "zone", "zone", "zone", "zone 1", "" })
+kindIs("SHOT", { "level", "boss", "boss", "death", "death", "instance", "zone", "zone", "zone", "zone 1", "", "level", "" })
 kindIs("WEATHER", { "1 0.5000", "1 0.8000" })
 kindIs("DAYLIGHT", { "1", "0" })
 kindIs("BROKEN", { "8 3003" })

@@ -58,6 +58,7 @@ local SOCIAL_PARTS = {
 local pending          -- the moment waiting for its picture
 local taking           -- which moment the screenshot now being taken is for
 local lastShotAt, lastShotRank
+local ownShotSecond    -- the second, by the computer's clock, of the player's own last screenshot
 local hidden = {}      -- frame -> the alpha to put back
 local mark, patches
 
@@ -188,6 +189,7 @@ end
 
 handlers.SCREENSHOT_SUCCEEDED = function()
   if not taking then
+    ownShotSecond = time()
     write("SHOT")
   elseif taking.chatShown then
     write("SHOT", taking.why, 1)
@@ -228,9 +230,17 @@ local function whenReady(moment, retries)
     C_Timer.After(1, WJ.guard("shot", function() whenReady(moment, retries - 1) end))
     return
   end
+  -- The game names a screenshot's file after the second it was taken in, so a
+  -- picture in the same second as one of the player's own would replace their
+  -- file. This one waits for the next second instead.
+  if ownShotSecond == time() then
+    C_Timer.After(1, WJ.guard("shot", function() whenReady(moment, retries) end))
+    return
+  end
   pending = nil
-  -- Paused, nothing is recorded, so nothing is taken either.
-  if not WJ.isRecording() or taking or screenIsBusy(moment) then return end
+  -- Paused, nothing is recorded, so nothing is taken either; and the setting
+  -- may have been turned off while the picture waited.
+  if not WJ.isRecording() or not WJ.getIconSetting("screenshots") or taking or screenIsBusy(moment) then return end
   if moment.why == "zone" and realZone() ~= moment.key then return end
   take(moment)
 end
