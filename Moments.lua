@@ -75,8 +75,9 @@ local TAKEN   = meterTypes.DamageTaken or 7
 local HEALED  = meterTypes.HealingDone or 2
 local ENEMIES = meterTypes.EnemyDamageTaken or 10
 
--- The last line written: the meter's session ID and the duration it reported then
--- (none for the fight already on the meter when the session began; see seedMoments).
+-- The last line written: the meter's session ID, the duration it reported then and
+-- its totals (for the fight already on the meter when the session began, as the
+-- meter showed it then; see seedMoments).
 local lastFight
 
 local function haveMeter()
@@ -201,14 +202,20 @@ end
 -- The newest session's line, if this reading of it hasn't been written: a new
 -- session, or one already written whose duration has grown since. atOnce:
 -- only a whole line; a second later, whatever the meter will show.
+-- What a line's fields say of how far the fight had got: its duration, when plain,
+-- and its totals, as later readings are held against.
+local function standing(f)
+  local duration = f[2]
+  if secret(duration) or type(duration) ~= "number" then duration = nil end
+  return duration, field(f[3]) .. "/" .. field(f[4]) .. "/" .. field(f[6])
+end
+
 local function writeFight(atOnce)
   local id = newestFight()
   if id == nil then return end
   local f, whole = readFight(id)
   if atOnce and not whole then return end
-  local duration = f[2]
-  if secret(duration) or type(duration) ~= "number" then duration = nil end
-  local totals = field(f[3]) .. "/" .. field(f[4]) .. "/" .. field(f[6])
+  local duration, totals = standing(f)
   if lastFight and lastFight.id == id then
     -- Written before: again only if it has grown. The meter's clock alone
     -- runs on for a moment after combat, so a second later the duration must
@@ -794,16 +801,23 @@ end
 -- Session start and resume
 ---------------------------------------------------------------------------
 
--- At session start: the meter's newest fight is from before this session, and
--- must never be written as one that just ended.
--- It stands as the last fight written, with no duration, so writeFight passes
--- over it until the meter starts a new one.
+-- At session start: the meter's newest fight stands as the last one written, as
+-- the meter shows it now, and writeFight's own rule tells the two cases apart. A
+-- fight that ended before this session never grows, so it is never written as one
+-- that just ended; one still running grows, and its end writes it once, whole, as
+-- if the session's start weren't there. When the meter hides how far the fight has
+-- got, as it does in combat (a reload or a resume mid-fight), nothing stands: the
+-- fight is this session's, written at its end.
 function WJ.seedMoments()
   lastFight = nil
-  if haveMeter() then
-    local ok, id = pcall(newestFight)
-    if ok and id ~= nil then lastFight = { id = id } end
-  end
+  if not haveMeter() then return end
+  local ok, id = pcall(newestFight)
+  if not ok or id == nil then return end
+  local read, f = pcall(readFight, id)
+  if not read then return end
+  local duration, totals = standing(f)
+  if duration == nil then return end
+  lastFight = { id = id, duration = duration, totals = totals }
 end
 
 -- With the opening snapshot, once the client has loaded the character. The

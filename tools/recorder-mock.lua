@@ -1231,16 +1231,21 @@ local refusedUnforeseen = auraRefusals - refusedBeforeUnforeseen
 
 -- a session that opens in the middle of a fight: the game refuses aura reads, so the opening
 -- has no AURA lines and no ERR; they come a second after the fight ends. One aura's spell is
--- always hidden and is never written.
+-- always hidden and is never written. The meter hides the fight's standing too, so the opening
+-- seeds nothing of it, and the fight's end writes it once, whole, with what it grew to.
 SlashCmdList.WIDSITH("pause")
 present.HELPFUL[2] = { name = "Hidden", spellId = 99999, isHelpful = true, duration = 0, applications = 0, auraInstanceID = 250, alwaysHidden = true }
 present.HELPFUL[3] = { name = "Blessing of Kings", spellId = 20217, isHelpful = true, duration = 3600, applications = 0, auraInstanceID = 251 }
 inCombat = true
+fights[#fights + 1] = { sessionID = 93, name = "Riverpaw Runt", durationSeconds = 6 }
+meterDuration, meterTotal = 6, 50
 SlashCmdList.WIDSITH("resume")
 advance(8)
+meterDuration, meterTotal = 14, 120
 inCombat = false
 fire("PLAYER_REGEN_ENABLED")
 advance(3)
+meterDuration, meterTotal = 24, 181
 -- an encounter's restriction on a client that can't be asked first: the read itself is refused
 local secrets = C_Secrets
 C_Secrets = nil
@@ -1346,6 +1351,17 @@ expect(fightCount["88"] == nil, "the meter's fight from before the session was w
 expect(fightAfterLeave["92"] == 0 and fightCount["92"] == 1,
   "a fight written whole at the instant was written again a second later, when only the meter's clock had moved on: "
   .. tostring(fightCount["92"]) .. " lines")
+do
+  local lines93 = {}
+  for _, s in ipairs(WidsithDB.sessions) do
+    for _, l in ipairs(lines(s)) do
+      if l.kind == "FIGHT" and l.fields:match("^93\t") then lines93[#lines93 + 1] = l.fields end
+    end
+  end
+  expect(#lines93 == 1 and lines93[1]:match("^93\t14\t") ~= nil,
+    "a fight running at a resume wasn't written once at its end with what it grew to: "
+    .. #lines93 .. " lines, " .. (lines93[1] or "none"):gsub("\t", " "))
+end
 expect(fightLastDuration["91"] == 40 and fightLastAfter["91"] == 1000,
   "a session the meter carried on through another span of combat wasn't written again, a second after that span's end, with its grown duration: "
   .. tostring(fightLastDuration["91"]) .. " s, " .. tostring(fightLastAfter["91"]) .. " ms after leave")
