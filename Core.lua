@@ -651,7 +651,7 @@ local HELP = {
   { "save", "reloads the interface, which writes the recording to disk." },
   { "icon", "shows or hides the recording icon." },
   { "options", "opens the settings panel." },
-  { "check", "provides internal diagnostic information." },
+  { "check", "names the game client and lists anything " .. WJ.NAME .. " uses that this client lacks." },
   { "debug", "echoes every line to chat as it is recorded." },
 }
 local HELP_TESTING = {
