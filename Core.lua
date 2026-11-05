@@ -428,6 +428,10 @@ end
 -- opening: the session's opening snapshot, whose durability read is where
 -- watching for broken gear starts (Events.lua).
 function WJ.snapshot(opening)
+  -- Experience or money the game changed without an event the addon heard is written
+  -- as its own line first (Events.lua), so the snapshot never says more than the lines
+  -- before it. Under a guard of its own, so a fault there can't cost the snapshot.
+  if WJ.catchUpProgress then WJ.guard("catchUp", WJ.catchUpProgress)(true) end
   local mapID, x, y = WJ.currentPosition()
   -- The worn items' strings go with the first snapshot of a session and then
   -- only when they differ from the last written: a quiet session costs nothing.
