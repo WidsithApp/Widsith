@@ -82,6 +82,8 @@ function WJ.onEnteringWorld(isLogin, isReload)
   -- loading screen appeared, so a mount or ability used on the way to the door stays silent.
   if not (isLogin or isReload) then
     WJ.onRelocation("load")
+    -- Experience or money the game granted behind the loading screen, written on arrival.
+    WJ.catchUpProgress()
   end
 end
 
@@ -1434,6 +1436,33 @@ function WJ.registerEvents(frame)
   end
   table.sort(missing)
   WJ.unregisteredEvents = missing
+end
+
+-- Experience the game grants during a zone transfer (discovering the zone on
+-- arrival, after a portal or a teleport) can come with no PLAYER_XP_UPDATE the
+-- addon hears, and money moved then may have no PLAYER_MONEY either. So each
+-- arrival after a loading screen, and each snapshot, reads again what the game
+-- says and, where it differs from what the lines last said, writes the change
+-- through the event's own handler, as the event would have. Nothing moved,
+-- nothing written. atOnce: write a money change now rather than a frame later,
+-- so the snapshot that follows comes after it.
+--
+-- While the client is still loading the character, what it hasn't loaded yet
+-- reads as nothing: experience and its maximum 0, money 0. A read of nothing
+-- is never a change, so it is skipped: a loaded character has a maximum at any
+-- level, and money read as nothing where the lines last said more is taken as
+-- not yet loaded (money really spent has PLAYER_MONEY of its own). Skipping
+-- costs nothing, since the next snapshot reads the same again once the values
+-- are real.
+function WJ.catchUpProgress(atOnce)
+  local max = plainNumber(UnitXPMax("player"))
+  if max and max > 0 then handlers.PLAYER_XP_UPDATE("player") end
+  local due = changesDue[#changesDue]
+  local known = due and plainNumber(due.total) or lastTotal
+  local total = plainNumber(GetMoney())
+  local unloaded = total == 0 and known and known > 0
+  if total and total ~= known and not unloaded then handlers.PLAYER_MONEY() end
+  if atOnce then writeChanges() end
 end
 
 -- Called at session start, once the player and quest log exist. Seeds the
