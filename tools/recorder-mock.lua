@@ -33,6 +33,9 @@
 -- for, strangers' duels and rolls left out, the character's /roll with and without the surname,
 -- loot rolls in both clients' wordings (never written as loot), the loading screen's length, and
 -- /widsith check finding every message.
+-- And experience and money the game changes with no event the addon hears, as WoW Forever
+-- 1.60.1 was seen to do for a zone discovered behind a loading screen: written on arrival, and
+-- before a snapshot that would otherwise show more than the lines before it.
 --
 -- Run from the addon's folder:
 --   npx --yes -p fengari-node-cli fengari tools/recorder-mock.lua
@@ -221,10 +224,13 @@ function GetNormalizedRealmName() return "Whitemane" end
 function UnitClass() return "Warrior", "WARRIOR", 1 end
 function UnitRace() return "Human", "Human", 1 end
 function UnitLevel(unit) if unit == "party1" then return 7 end return 5 end
-function UnitXP() return 100 end
-function UnitXPMax() return 2800 end
+-- Experience and money; while notLoaded, all three read 0, as they do while the client is
+-- still loading the character.
+local xpNow, notLoaded = 100, false
+function UnitXP() if notLoaded then return 0 end return xpNow end
+function UnitXPMax() if notLoaded then return 0 end return 2800 end
 local money = 334
-function GetMoney() return money end
+function GetMoney() if notLoaded then return 0 end return money end
 function GetInstanceInfo() return "Eastern Kingdoms", "none", 0, "", 0, 0, false, 0 end
 function IsResting() return false end
 function IsInGroup() return grouped end
@@ -1083,12 +1089,17 @@ advance(1)
 -- /widsith check: every message the recorder reads is one this client has
 SlashCmdList.WIDSITH("check")
 
--- a loading screen across the five-minute mark: the periodic lines wait for its end
+-- a loading screen across the five-minute mark: the periodic lines wait for its end. Behind
+-- it the game grants experience for the place arrived in, and money moves, with neither
+-- PLAYER_XP_UPDATE nor PLAYER_MONEY heard: both are written on arrival, before the SNAP
 local loadingFrom = firstSessionAt + addonTable.TIMER_PERIOD - 2.5
 local clockBeforeScreen = clock
 local loadingTo = loadingFrom + 5
 advance(loadingFrom - clock)
 fire("LOADING_SCREEN_ENABLED")
+advance(2)
+xpNow = xpNow + 85
+money = money + 250
 advance(loadingTo - clock)
 fire("PLAYER_ENTERING_WORLD", false, false)
 fire("LOADING_SCREEN_DISABLED")
@@ -1101,7 +1112,7 @@ grouped = false
 fire("GROUP_LEFT")
 
 -- Money: each change is GetMoney() moving and PLAYER_MONEY firing.
-local moneyChanges = 1   -- the quest's reward, above
+local moneyChanges = 2   -- the quest's reward and the money behind the loading screen, above
 local function change(copper)
   money = money + copper
   moneyChanges = moneyChanges + 1
@@ -1239,6 +1250,7 @@ present.HELPFUL[3] = { name = "Blessing of Kings", spellId = 20217, isHelpful = 
 inCombat = true
 fights[#fights + 1] = { sessionID = 93, name = "Riverpaw Runt", durationSeconds = 6 }
 meterDuration, meterTotal = 6, 50
+local lastSessionAt = clock
 SlashCmdList.WIDSITH("resume")
 advance(8)
 meterDuration, meterTotal = 14, 120
@@ -1256,6 +1268,25 @@ fire("UNIT_AURA", "player", { addedAuras = { { name = "Renew", spellId = 139, is
 local refusedInEncounter = auraRefusals - refusedBefore
 C_Secrets = secrets
 encounter = false
+-- an arrival whose PLAYER_ENTERING_WORLD comes before the client has loaded the character:
+-- experience, its maximum and money read 0 there, though the game granted 60 experience and
+-- 75 copper behind the screen. Nothing is written at the arrival; the five-minute snapshot
+-- below writes both once the values are real
+fire("LOADING_SCREEN_ENABLED")
+advance(1)
+xpNow = xpNow + 60
+money = money + 75
+advance(2)
+notLoaded = true
+local unloadedArrivalMs = (clock - lastSessionAt) * 1000
+fire("PLAYER_ENTERING_WORLD", false, false)
+notLoaded = false
+fire("LOADING_SCREEN_DISABLED")
+advance(2)
+-- experience the game grants with no PLAYER_XP_UPDATE heard, before the five-minute snapshot:
+-- the snapshot reads it first, so an XP line comes before the SNAP that shows it
+xpNow = xpNow + 40
+advance(lastSessionAt + addonTable.TIMER_PERIOD + 2 - clock)
 
 -- a click whose action throws: no Lua error reaches the player, the fault is an ERR line like
 -- any other, and the player is answered. The icon's file isn't loaded here, so the guard the
@@ -1306,6 +1337,32 @@ expect(has(afterLeave, "AURA gain 139"), "an announced aura went unwritten when 
 expect(not has(beforeLeave, "STATS") and has(afterLeave, "STATS"),
   "the sheet of a session that opened in a fight should be written after the fight, not hidden inside it")
 expect(not seen.ERR, "a refused aura read was written as ERR")
+do
+  -- the experience no event announced, written as XP before the five-minute SNAP that shows it
+  -- (and the arrival read while the character wasn't loaded wrote nothing: no XP or MONEY line
+  -- from that arrival until the snapshot's own, and the snapshot's MONEY line has its total)
+  local xpWritten, snapShows, xpFirst, moneyFirst = false, false, false, false
+  local moneyTotal, earlyLines = nil, 0
+  for line in (table.concat(last.chunks, "\n") .. "\n"):gmatch("([^\n]*)\n") do
+    local t, kind, rest = line:match("^(%d+)\t([^\t]+)\t?(.*)$")
+    t = tonumber(t)
+    if not snapShows and (kind == "XP" or kind == "MONEY") and t and t >= unloadedArrivalMs then
+      if t < (addonTable.TIMER_PERIOD - 1) * 1000 then
+        earlyLines = earlyLines + 1
+      end
+      if kind == "MONEY" then moneyTotal = rest:match("^(%d+)") end
+    end
+    if kind == "XP" and rest:match("^(%d+)") == tostring(xpNow) then xpWritten = true end
+    if kind == "SNAP" and rest:match("^%d+\t(%d+)") == tostring(xpNow) and not snapShows then
+      snapShows, xpFirst = true, xpWritten
+      moneyFirst = moneyTotal ~= nil and moneyTotal == rest:match("^%d+\t%d+\t%d+\t(%d+)")
+    end
+  end
+  expect(snapShows, "no SNAP showed the experience the game granted without an event")
+  expect(xpFirst, "experience granted without an event reached a SNAP with no XP line before it")
+  expect(earlyLines == 0, earlyLines .. " XP or MONEY lines written from an arrival read before the character had loaded")
+  expect(moneyFirst, "money the game moved behind a loading screen read before loading reached a SNAP with no MONEY line of its total before it")
+end
 local framesWithReads = 0
 for _ in pairs(statFrames) do framesWithReads = framesWithReads + 1 end
 expect(framesWithReads >= 4, "the counters were read in " .. framesWithReads .. " frames: a pass should be spread across frames")
@@ -1424,6 +1481,23 @@ expect(#head == 2 and head[1].item == "" and head[2].item == "10001" and math.ab
   .. #head .. " EQUIP lines for the head")
 expect(#ring == 2, "a slot changed twice within the second wrote " .. #ring .. " EQUIP lines, not one for each event")
 expect(#weapon == 1, "a slot that read the same a second later wrote " .. #weapon .. " EQUIP lines, not one")
+do
+  -- what the game granted behind the screen, written on arrival and before the SNAP
+  local xpAt, moneyAt, xpIndex, moneyIndex, snapIndex
+  for i, l in ipairs(first) do
+    if l.t >= screenToMs then
+      if l.kind == "XP" and not xpAt and l.fields == "185\t2800\t5" then xpAt, xpIndex = l.t, i end
+      if l.kind == "MONEY" and not moneyAt then moneyAt, moneyIndex = l.t, i end
+      if l.kind == "SNAP" and not snapIndex then snapIndex = i end
+    end
+  end
+  expect(xpAt and xpAt - screenToMs <= 50,
+    "experience granted behind a loading screen wasn't written on arrival: " .. tostring(xpAt and xpAt - screenToMs) .. " ms after it")
+  expect(moneyAt and moneyAt - screenToMs <= 50,
+    "money moved behind a loading screen wasn't written on arrival: " .. tostring(moneyAt and moneyAt - screenToMs) .. " ms after it")
+  expect(snapIndex and xpIndex and moneyIndex and xpIndex < snapIndex and moneyIndex < snapIndex,
+    "the SNAP after the loading screen came before the lines of what changed behind it")
+end
 expect(snapsInScreen == 0, "a SNAP was written while a loading screen was up")
 expect(snapAfterScreen ~= nil and snapAfterScreen <= 1000,
   "the SNAP held back by a loading screen wasn't written at the first tick after it: "
@@ -1585,6 +1659,7 @@ for _, session in ipairs(WidsithDB.sessions) do
 end
 local expectedMoney = {
   { "a quest's reward", 1200, "quest", "", "1200", "" },
+  { "money that moved behind a loading screen", 250, "", "", "", "" },
   { "a corpse's coin", 120, "loot", "", "120", CORPSE },
   { "a share", 45, "share", "", "45", "" },
   { "a corpse's coin whose message came late", 33, "loot", "", "", CORPSE2 },

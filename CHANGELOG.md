@@ -2,6 +2,10 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
+## 0.6.3 · 2026-11-05
+
+- Experience or gold you gain while a loading screen is up, such as the experience for discovering the place you arrive in after a portal or a teleport, is recorded when you arrive. It used to be missed, and only turned up in the recording a few minutes later.
+
 ## 0.6.2 · 2026-11-05
 
 - A fight that is still going when you reload or resume recording is recorded when it ends. It used to be lost.
