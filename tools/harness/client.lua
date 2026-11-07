@@ -334,8 +334,13 @@ local function newGame(profileName, dir, version)
   end
   game.render = render
 
+  -- The game promises nothing about the order frames hear an event in, and has been seen to
+  -- hand one to a later frame first; so the frames hear it last-made first, the reverse of the
+  -- addon's file order, which is what would hide a dependence on the order.
   local function fire(event, ...)
-    for _, f in ipairs(copyTable(frames)) do
+    local list = copyTable(frames)
+    for i = #list, 1, -1 do
+      local f = list[i]
       local reg = f.events[event]
       if reg and f.scripts.OnEvent and (reg == true or reg == (...)) then f.scripts.OnEvent(f, event, ...) end
     end

@@ -312,8 +312,14 @@ function WJ.startSession(isLogin, isReload, isResume)
         previous.closed and "" or ", |cffff4444not closed cleanly|r")
     end
     -- A welcome or a version's news due at this load says that it is recording
-    -- itself (Welcome.lua), so the line isn't said twice.
-    if WJ.newsDue and WJ.newsDue() then
+    -- itself (Welcome.lua), in this line's place. A fault there is noted like
+    -- any other, and the line is said as usual.
+    local newsSaid = false
+    if WJ.tellNews then
+      local ok, said = pcall(WJ.tellNews)
+      if ok then newsSaid = said == true else WJ.recordError("welcome", said) end
+    end
+    if newsSaid then
       -- said by the news
     elseif isLogin then
       WJ.announce(WJ.VERSION .. " is recording. Type /widsith help for commands.")
@@ -363,6 +369,7 @@ end
 -- the player is told once, since the icon shows it out as well.
 local function stayPaused()
   paused = true
+  if WJ.tellNews then WJ.guard("welcome", WJ.tellNews)() end
   WJ.announce("is paused on this character. Resume recording from the icon or with /widsith resume.")
   if WJ.onRecordingStarted then WJ.guard("recordingStarted", WJ.onRecordingStarted)() end
 end

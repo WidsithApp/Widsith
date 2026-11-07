@@ -82,18 +82,19 @@ end)
 test("the welcome is said once, at the first login on the account", function(game)
   game.login()
   game.advance(4)
-  local welcome = game.said("is now recording. Thank you for installing it.")
+  local welcome = game.said("Thank you for installing")
   expect(welcome ~= nil, "no welcome at the first login")
-  expect(welcome and welcome:find("^|TInterface\\AddOns\\Widsith\\media\\emblem:16:16|t |cff33ff99Widsith|r is now recording"),
-    "the welcome doesn't open with the emblem and the name: " .. tostring(welcome))
-  expect(welcome and welcome:find("Click the icon by the minimap to save at any time.", 1, true), "the welcome doesn't say how to save")
-  expect(welcome and welcome:find("drop the file Widsith.lua on widsith.app", 1, true), "the welcome doesn't say where the replay is")
-  expect(welcome and welcome:find("under Options, AddOns, Widsith.", 1, true), "the welcome doesn't say where the settings and help are")
+  expect(welcome and welcome:find("^|TInterface\\AddOns\\Widsith\\media\\emblem:16:16|t Thank you for installing |cff33ff99Widsith|r!\n"),
+    "the welcome doesn't open with the emblem and the thanks: " .. tostring(welcome))
+  local lines = {}
+  for line in ((welcome or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+  same({ lines[2], lines[3], lines[4], lines[5], lines[6] }, { "  - Your gameplay is now being recorded", "  - View it or share it at widsith.app",
+    "  - Download the uploader there to keep it in sync automatically", "", "More details and support in the addon's options, and at widsith.app." },
+    "the welcome's list, a blank line, and where to find more")
   local messages = 0
-  for _, line in ipairs(game.chat) do if line:find("Thank you for installing", 1, true) or line:find("Click the icon by the minimap", 1, true) then messages = messages + 1 end end
+  for _, line in ipairs(game.chat) do if line:find("Thank you for installing", 1, true) or line:find("Your gameplay is now", 1, true) then messages = messages + 1 end end
   eq(messages, 1, "the welcome's chat messages: one, its lines under one heading")
-  expect(welcome and welcome:find("installing it.\n\nThe recording is saved", 1, true), "the welcome's paragraphs aren't a blank line apart")
-  expect(not game.said("is recording. Type /widsith help"), "the login line was said beside the welcome, which says it itself")
+  expect(not game.said("is recording. Type /widsith help") and not game.said("is recording."), "the login line was said beside the welcome, which says it itself")
   eq(game.G.WidsithAccount.seenVersion, game.version, "the version the account has seen")
   game.clearChat()
   game.reload()
