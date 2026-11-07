@@ -16,17 +16,22 @@ local _, WJ = ...
 
 local NAME = "|cff33ff99" .. WJ.NAME .. "|r"
 
+-- Either message is a block of its own in chat: a rule above and below, the
+-- flame on its first line, a blank line between its points.
+local RULE = "----------------------------------------"
+
 local WELCOME = {
   "Thank you for installing " .. NAME .. "!",
-  "",
   "  - Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app",
   "  - It is saved whenever you log off or reload the interface. Click the " .. WJ.EMBLEM .. " icon by the minimap to save at any time",
   "  - The addon's options menu, under Options, AddOns, Widsith, has more details and support information",
-  "",
   "  - A lightweight companion app from widsith.app uploads your progress for you whenever you save",
-  "",
   "More details at widsith.app",
 }
+
+local function block(points)
+  return RULE .. "\n" .. WJ.EMBLEM .. " " .. table.concat(points, "\n\n") .. "\n" .. RULE .. "\n"
+end
 
 -- What changed that a player would notice, by version, a few words each. The
 -- About page lists them all. Chat gets only the ones marked for it: what a
@@ -62,20 +67,15 @@ function WJ.tellNews()
   local account = WidsithAccount
   if not account or account.seenVersion == WJ.VERSION then return false end
   local version = WJ.VERSION
-  -- A blank line closes either, so it stands apart from what other addons print after it.
   if account.seenVersion == nil and not account.usedBefore then
-    WJ.say(WJ.EMBLEM .. " " .. table.concat(WELCOME, "\n") .. "\n", true)
+    WJ.say(block(WELCOME), true)
   else
-    local lines = { version .. " is installed." }
-    if NOTES[version] then
-      lines[#lines + 1] = ""
-      lines[#lines + 1] = "What's new:"
-      lines[#lines + 1] = ""
-    end
+    local points = { NAME .. " " .. version .. " is installed." }
+    if NOTES[version] then points[#points + 1] = "What's new:" end
     for _, note in ipairs(NOTES[version] or {}) do
-      if note.chat then lines[#lines + 1] = "  - " .. note[1] end
+      if note.chat then points[#points + 1] = "  - " .. note[1] end
     end
-    WJ.announce(table.concat(lines, "\n") .. "\n")
+    WJ.say(block(points), true)
   end
   account.seenVersion = version
   return true

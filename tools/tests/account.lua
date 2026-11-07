@@ -84,16 +84,18 @@ test("the welcome is said once, at the first login on the account", function(gam
   game.advance(4)
   local welcome = game.said("Thank you for installing")
   expect(welcome ~= nil, "no welcome at the first login")
-  expect(welcome and welcome:find("^|TInterface\\AddOns\\Widsith\\media\\flame%-chat:16:16|t Thank you for installing |cff33ff99Widsith|r!\n"),
-    "the welcome doesn't open with the emblem and the thanks: " .. tostring(welcome))
+  expect(welcome and welcome:find("^%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-\n|TInterface\\AddOns\\Widsith\\media\\flame%-chat:16:16|t Thank you for installing |cff33ff99Widsith|r!\n"),
+    "the welcome doesn't open with a rule, the flame and the thanks: " .. tostring(welcome))
   local lines = {}
-  for line in (((welcome or "") .. "\n"):gsub("|T[^|]*|t ?", "")):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
-  same({ lines[2], lines[3], lines[4], lines[5], lines[6], lines[7], lines[8], lines[9] }, { "",
-    "  - Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app",
-    "  - It is saved whenever you log off or reload the interface. Click the icon by the minimap to save at any time",
-    "  - The addon's options menu, under Options, AddOns, Widsith, has more details and support information",
-    "", "  - A lightweight companion app from widsith.app uploads your progress for you whenever you save", "", "More details at widsith.app" },
-    "the welcome's lines")
+  for line in (((welcome or "") .. "\n"):gsub("|T[^|]*|t ?", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+  local RULE = "----------------------------------------"
+  same(lines, { RULE, "Thank you for installing Widsith!", "",
+    "  - Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app", "",
+    "  - It is saved whenever you log off or reload the interface. Click the icon by the minimap to save at any time", "",
+    "  - The addon's options menu, under Options, AddOns, Widsith, has more details and support information", "",
+    "  - A lightweight companion app from widsith.app uploads your progress for you whenever you save", "",
+    "More details at widsith.app", RULE, "" },
+    "the welcome's lines: a rule above and below, a blank line between the points")
   expect(welcome and welcome:find("Click the |TInterface\\AddOns\\Widsith\\media\\flame%-chat:16:16|t icon by the minimap"), "the save line doesn't draw the icon it names")
   expect(welcome and welcome:sub(-1) == "\n", "the welcome doesn't close with a blank line")
   local messages = 0
@@ -120,14 +122,16 @@ test("a new version is announced once per account as one message listing what ch
   eq(#said, 1, "chat messages at the login: one, the version's news in the recording line's place")
   local lines = {}
   for line in ((said[1] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
-  eq(lines[1], "Widsith " .. game.version .. " is installed.", "the message's first line")
-  same({ lines[2], lines[3], lines[4] }, { "", "What's new:", "" }, "the heading of the list, a blank line either side")
+  local RULE = "----------------------------------------"
+  same({ lines[1], lines[2], lines[3], lines[4] }, { RULE, "Widsith " .. game.version .. " is installed.", "", "What's new:" }, "the block's opening")
+  same({ lines[13], lines[14] }, { RULE, "" }, "the block's close")
   -- Chat gets what a player may act on or what changes the way things work; the About page
   -- lists everything, the reminder's new length and the menu's shape included.
-  same({ lines[5], lines[6], lines[7], lines[8] }, { "  - Screenshot highlights and chat in the screenshots are now on by default",
-    "  - Changes to your Widsith settings are now shared across all your characters",
-    "  - Pause and Resume are now Stop and Start, which is what they do: a stopped recording records nothing",
-    "  - A character whose recording you stopped stays stopped until you start it again" }, "the message's list")
+  same({ lines[5], lines[6], lines[7], lines[8], lines[9], lines[10], lines[11], lines[12] }, { "",
+    "  - Screenshot highlights and chat in the screenshots are now on by default", "",
+    "  - Changes to your Widsith settings are now shared across all your characters", "",
+    "  - Pause and Resume are now Stop and Start, which is what they do: a stopped recording records nothing", "",
+    "  - A character whose recording you stopped stays stopped until you start it again" }, "the message's list, a blank line between the points")
   expect(said[1]:sub(-1) == "\n", "the version's news doesn't close with a blank line")
   expect(not said[1]:find("45 minutes", 1, true) and not said[1]:find("under Icon", 1, true), "a change a player can only see is in the message")
   eq(#game.addon.whatsNew(), 6, "the About page's notes")
