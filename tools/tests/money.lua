@@ -215,15 +215,18 @@ test("a trainer's service names the trainer", function(game)
   })
 end)
 
--- The mailbox: a letter sent with 2 silver and the postage (both changes in one frame), then an
--- auction's proceeds taken, then money that moves with the mailbox open and nothing said why.
+-- The mailbox: a letter sent with 2 silver attached, which the game takes with the postage in one
+-- change, then an empty letter, then an auction's proceeds taken, then money that moves with the
+-- mailbox open and nothing said why.
 local function mailScene(game)
   game.openWindow("MailInfo", nil)
   game.world.sendMoney = 200
   game.G.SendMail("Bertrand", "For the road", "")
-  game.change(-200)
-  game.change(-30)
+  game.change(-230)
   game.world.sendMoney = 0
+  game.advance(1)
+  game.G.SendMail("Bertrand", "Nothing in it", "")
+  game.change(-30)
   game.advance(1)
   game.world.inbox = { { sender = "Stormwind Auction House", subject = "Auction successful: Linen Cloth", money = 7600, cod = 0, invoice = "seller" } }
   game.fire("MAIL_INBOX_UPDATE")
@@ -235,14 +238,14 @@ local function mailScene(game)
   game.advance(1)
 end
 
-test("the mailbox's money is written as sent, postage, an auction's proceeds, or no reason", function(game)
+test("the mailbox's money is written as a letter's cost, an auction's proceeds, or no reason", function(game)
   game.login()
   game.advance(8)
   local start = game.world.money
   mailScene(game)
   expectMoney(game, start, {
-    { "money sent by mail", -200, "mailsend", "mailinfo", "200", "" },
-    { "postage", -30, "postage", "mailinfo", "30", "" },
+    { "a letter sent with money", -230, "mailsend", "mailinfo", "230", "" },
+    { "an empty letter", -30, "mailsend", "mailinfo", "30", "" },
     { "an auction's proceeds", 7600, "ahsale", "mailinfo", "7600", "" },
     { "a change with no reason at the mailbox", 15, "", "mailinfo", "", "" },
   })

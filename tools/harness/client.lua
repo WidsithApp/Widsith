@@ -569,8 +569,10 @@ local function newGame(profileName, dir, version)
     G.BuyTrainerService = function() end
     G.GetTrainerServiceCost = function() return 500, 0, 0 end
     G.SendMail = function() end
+    -- The price the mail window shows for a send is the postage and the attached money together
+    -- (Retail 12.1.5: 1 gold attached shows 10030), and the game takes both in one change.
     G.GetSendMailMoney = function() return world.sendMoney end
-    G.GetSendMailPrice = function() return 30 end
+    G.GetSendMailPrice = function() return 30 + world.sendMoney end
     G.GetInboxNumItems = function() return #world.inbox end
     G.GetInboxHeaderInfo = function(i)
       local l = world.inbox[i]

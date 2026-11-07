@@ -78,23 +78,21 @@ end)
 -- /widsith check
 ---------------------------------------------------------------------------
 
--- What each client lacks of what the recorder uses, in the order the recorder lists them, as
--- /widsith check was seen to print it: on WoW Forever the old GetSpecialization global alone; on
--- Retail the Skills tab's two calls, the defence skill, the Forever rules and preset, the spec
--- group's config, day and night, and the stable's two calls.
-local MISSING_FUNCTIONS = {
+-- What each client lacks of what the recorder uses, as /widsith check was seen to print it: on
+-- WoW Forever the old GetSpecialization global alone; on Retail the Skills tab's two calls, the
+-- defence skill, the Forever rules and preset, the spec group's config, day and night, the
+-- stable's two calls, and the day and night event. The stand-in's profiles say the same, and the
+-- recorder knows each as expected, so a client lacking exactly what it is known to lack prints
+-- none missing and names the expected ones apart.
+local EXPECTED = {
   forever = "GetSpecialization",
   retail = "C_SkillInfo.GetSkillLineInfo, C_SkillInfo.GetSkillLineInfoByID, UnitDefenseSkill, "
     .. "C_GameRules.IsHardcoreActive, C_GameRules.GetForeverExperiencePreset, "
     .. "C_SpecializationInfo.GetCombatConfigIDForSpecGroup, C_DateAndTime.IsDayTime, "
-    .. "C_StableInfo.BuyStableSlot, C_StableInfo.GetNextStableSlotCost",
-}
-local MISSING_EVENTS = {
-  forever = "none",
-  retail = "DIEL_CYCLE_CHANGED",
+    .. "C_StableInfo.BuyStableSlot, C_StableInfo.GetNextStableSlotCost, DIEL_CYCLE_CHANGED",
 }
 
-test("/widsith check names the client and what it lacks: every message is there", function(game)
+test("/widsith check names the client, finds nothing missing it didn't expect, and names what is expected", function(game)
   game.login()
   game.advance(8)
   local from = #game.chat
@@ -103,10 +101,23 @@ test("/widsith check names the client and what it lacks: every message is there"
   local p = game.profile
   eq(said[1], "Widsith client " .. p.version .. " (build " .. p.build .. "), interface " .. p.interface .. ", project " .. p.project
     .. ", expansion level " .. p.expansion .. (p.label == "forever" and ": WoW Forever" or "") .. ".", "the client line")
-  eq(said[2], "Widsith missing functions: " .. MISSING_FUNCTIONS[p.label], "the missing functions line")
+  eq(said[2], "Widsith missing functions: none", "the missing functions line")
   eq(said[3], "Widsith missing messages: none", "/widsith check didn't say every message is there")
-  eq(said[4], "Widsith missing events: " .. MISSING_EVENTS[p.label], "the missing events line")
-  eq(#said, 4, "lines /widsith check printed")
+  eq(said[4], "Widsith missing events: none", "the missing events line")
+  eq(said[5], "Widsith not on this client, as expected: " .. EXPECTED[p.label] .. ".", "the expected absences")
+  eq(#said, 5, "lines /widsith check printed")
+end)
+
+test("/widsith check names a function this client should have and hasn't", function(game)
+  game.login()
+  game.advance(8)
+  -- Not a function any more: the stand-in answers a function for any call it never defined, so a
+  -- call taken away must be replaced by something that isn't one.
+  game.G.C_Map.GetBestMapForUnit = false
+  local from = #game.chat
+  game.slash("check")
+  local said = chatSince(game, from)
+  eq(said[2], "Widsith missing functions: C_Map.GetBestMapForUnit", "an unexpected absence named alone")
 end)
 
 ---------------------------------------------------------------------------
@@ -129,15 +140,18 @@ test("/widsith alone says the version, the lines so far, the kills and quests, a
   eq(#said, 2, "lines the status printed with all well and debug off")
 end)
 
-test("/widsith alone with debug on names the file's path by realm and character", function(game)
+test("/widsith alone with debug on names the file's folders as the game names them", function(game)
   game.login()
   game.advance(8)
   game.slash("debug")
   local from = #game.chat
   game.slash("")
   local said = chatSince(game, from)
-  -- The path names the realm as GetRealmName gives it and the character by first name only.
-  eq(said[2], "Widsith the file is WTF\\Account\\<account>\\" .. game.profile.realm .. "\\" .. game.character.name
+  -- On Retail the realm's folder is the realm's name and the character's its name; on WoW Forever
+  -- the realm's folder is a number no call names, and the character's carries the surname.
+  local realm = game.profile.label == "forever" and "<numbered folder>" or game.profile.realm
+  local character = game.character.name .. (game.character.surname and ("-" .. game.character.surname) or "")
+  eq(said[2], "Widsith the file is WTF\\Account\\<account>\\" .. realm .. "\\" .. character
     .. "\\SavedVariables\\Widsith.lua, written at logout or reload.", "the file's path line")
   eq(said[3], "Widsith no earlier sessions on file.", "what the file held before this load")
   eq(said[4], "Widsith type /widsith help for commands.", "the status's last line")
