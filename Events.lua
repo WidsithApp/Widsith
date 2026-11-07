@@ -1312,13 +1312,11 @@ local MONEY_HOOKS = {
     if gossipCost.id and plainNumber(optionID) ~= gossipCost.id then return nil, false end
     return cost
   end },
-  -- Sending a letter takes the money attached and the postage, in that order.
-  { "SendMail", "mailsend", function()
-    local money = plainNumber((ask("GetSendMailMoney")))
-    if not money or money <= 0 then return nil, false end
-    return money
-  end },
-  { "SendMail", "postage", function() return (ask("GetSendMailPrice")) end },
+  -- Sending a letter costs the postage and whatever money was attached, which the game takes in
+  -- one change, and the price the window shows for the send is both together (1 gold attached:
+  -- 10030 copper, on Retail 12.1.5). One reason, then: what sending the letter cost. By the time
+  -- the hook runs the attached money reads as nothing, so it can't be told apart anyway.
+  { "SendMail", "mailsend", function() return (ask("GetSendMailPrice")) end },
   { "TakeInboxMoney", "mailtake", function(index)
     local l = letter(index)
     return l.money, letterKind(l)

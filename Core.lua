@@ -633,6 +633,22 @@ local USED_APIS = {
   "C_StableInfo.BuyStableSlot", "C_StableInfo.GetNextStableSlotCost",
 }
 
+-- What each client is known to be without, of the functions and events above, so the check
+-- can tell an expected absence from one that would be news: WoW Forever has no specialization
+-- global (its C_SpecializationInfo has the call); Retail 12.1.5 has none of Forever's rules,
+-- preset, defence skill, Skills tab, spec groups, day and night, or stable. Read in the game on
+-- Retail 12.1.5 build 70783 and WoW Forever 1.60.1 build 70840, where no event was missing.
+local KNOWN_ABSENT = {
+  forever = { functions = { "GetSpecialization" }, events = {} },
+  retail = {
+    functions = { "C_SkillInfo.GetSkillLineInfo", "C_SkillInfo.GetSkillLineInfoByID", "UnitDefenseSkill",
+      "C_GameRules.IsHardcoreActive", "C_GameRules.GetForeverExperiencePreset",
+      "C_SpecializationInfo.GetCombatConfigIDForSpecGroup", "C_DateAndTime.IsDayTime",
+      "C_StableInfo.BuyStableSlot", "C_StableInfo.GetNextStableSlotCost" },
+    events = { "DIEL_CYCLE_CHANGED" },
+  },
+}
+
 local function lookup(path)
   local v = _G
   for part in path:gmatch("[^%.]+") do
@@ -642,21 +658,55 @@ local function lookup(path)
   return v
 end
 
+-- The names in `list` split into the ones `known` says this client lacks and the rest.
+local function splitKnown(list, known)
+  local expected, unexpected = {}, {}
+  local set = {}
+  for _, name in ipairs(known) do set[name] = true end
+  for _, name in ipairs(list) do
+    if set[name] then expected[#expected + 1] = name else unexpected[#unexpected + 1] = name end
+  end
+  return expected, unexpected
+end
+
+local function listOrNone(list)
+  return #list > 0 and table.concat(list, ", ") or "none"
+end
+
 function WJ.printClientCheck()
   local version, build = GetBuildInfo()
   print(format("%sclient %s (build %s), interface %s, project %s, expansion level %s%s.", PREFIX,
     tostring(version), tostring(build), tostring(WJ.INTERFACE), tostring(WOW_PROJECT_ID),
     tostring(LE_EXPANSION_LEVEL_CURRENT), WJ.isForever and ": WoW Forever" or ""))
+  local known = KNOWN_ABSENT[WJ.isForever and "forever" or "retail"]
   local missing = {}
   for _, path in ipairs(USED_APIS) do
     if type(lookup(path)) ~= "function" then missing[#missing + 1] = path end
   end
-  print(PREFIX .. "missing functions: " .. (#missing > 0 and table.concat(missing, ", ") or "none"))
+  local expectedFunctions, unexpectedFunctions = splitKnown(missing, known.functions)
+  print(PREFIX .. "missing functions: " .. listOrNone(unexpectedFunctions))
   local formats = WJ.missingFormatNames and WJ.missingFormatNames() or {}
-  print(PREFIX .. "missing messages: " .. (#formats > 0 and table.concat(formats, ", ") or "none"))
-  local events = WJ.unregisteredEvents or {}
-  print(PREFIX .. "missing events: " .. (#events > 0 and table.concat(events, ", ") or "none"))
+  print(PREFIX .. "missing messages: " .. listOrNone(formats))
+  local expectedEvents, unexpectedEvents = splitKnown(WJ.unregisteredEvents or {}, known.events)
+  print(PREFIX .. "missing events: " .. listOrNone(unexpectedEvents))
+  local expected = {}
+  for _, name in ipairs(expectedFunctions) do expected[#expected + 1] = name end
+  for _, name in ipairs(expectedEvents) do expected[#expected + 1] = name end
+  if #expected > 0 then print(PREFIX .. "not on this client, as expected: " .. table.concat(expected, ", ") .. ".") end
   if WJ.savesNotLoaded then print(PREFIX .. "the game didn't load the recording file at the last reload.") end
+end
+
+-- Where the game writes the file. Under WTF\Account\<account>\ it makes a folder per realm and,
+-- in it, one per character; on WoW Forever the realm's folder is a number that is the same for
+-- every one of its realms, which no call names, and the character's folder carries the surname.
+local function fileLocation()
+  local name, surname = UnitName("player")
+  local character = name or "?"
+  if type(surname) == "string" and surname ~= "" and not (issecretvalue and issecretvalue(surname)) then
+    character = character .. "-" .. surname
+  end
+  local realm = WJ.isForever and "<numbered folder>" or (GetRealmName() or "?")
+  return "WTF\\Account\\<account>\\" .. realm .. "\\" .. character .. "\\SavedVariables\\" .. ADDON_NAME .. ".lua"
 end
 
 local function describeSize(bytes)
@@ -678,8 +728,7 @@ local function printStatus()
   local ok, message = WJ.health()
   if not ok then WJ.warn(message) end
   if WJ.debug then
-    print(PREFIX .. "the file is WTF\\Account\\<account>\\" .. (GetRealmName() or "?") .. "\\" .. (UnitName("player") or "?") ..
-      "\\SavedVariables\\" .. ADDON_NAME .. ".lua, written at logout or reload.")
+    print(PREFIX .. "the file is " .. fileLocation() .. ", written at logout or reload.")
     if previousOnFile then print(PREFIX .. previousOnFile) end
   end
   print(PREFIX .. "type /widsith help for commands.")

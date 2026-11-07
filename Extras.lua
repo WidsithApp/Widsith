@@ -251,8 +251,8 @@ end
 --
 -- On WoW Forever, every line of the character sheet's Skills tab (weapons,
 -- defence, armour, languages, class and secondary skills) from C_SkillInfo, as
--- Forever's own SkillsFrame.lua reads it, with the line's category ID. Retail
--- has no C_SkillInfo; there, only the professions.
+-- Forever's own SkillsFrame.lua reads it, with the line's category ID. Retail's
+-- C_SkillInfo has no GetSkillLineInfo (12.1.5); there, only the professions.
 ---------------------------------------------------------------------------
 
 local skillState = {}

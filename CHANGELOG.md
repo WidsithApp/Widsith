@@ -4,6 +4,9 @@ Each version of Widsith, newest first, with the date it was handed out. The addo
 
 ## Unreleased
 
+- With debug on, /widsith names the recording's folders as the game names them on WoW Forever: a numbered folder in place of the realm, and the character's folder with its surname. It used to point at a folder that doesn't exist.
+- Sending a letter is recorded as one line, the postage and any gold attached together, as the game takes them. A letter with gold used to be recorded as postage of the whole.
+- /widsith check names only what this client should have and hasn't. What a client is known to be without, such as Retail's lack of WoW Forever's rules and stable, is listed apart, as expected, rather than as missing.
 - Under auto-loot, when two corpses with coin are looted within two seconds, the second corpse's coin is no longer recorded with the first one's amount and corpse. The game's message for the first corpse's coin arrives after the coin was already recorded, and it used to be kept as the reason for whatever came next.
 
 ## 0.6.3 · 2026-11-05
