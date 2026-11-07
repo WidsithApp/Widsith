@@ -16,21 +16,27 @@ local _, WJ = ...
 
 local NAME = "|cff33ff99" .. WJ.NAME .. "|r"
 
--- Either message is a block of its own in chat: a rule above and below, the
--- flame on its first line, a blank line between its points.
+-- Either message is a block of its own in chat: a rule above and below, each
+-- a message of its own since the game indents every line of a message after
+-- its first; between them one message with the flame on its first line, a
+-- blank line between its points, each point behind a bullet in the flame's
+-- colour.
 local RULE = "----------------------------------------"
+local BULLET = "  |cfff4b04a\226\128\162|r "   -- a bullet, as its UTF-8 bytes: the game's Lua has no \u escape
 
 local WELCOME = {
   "Thank you for installing " .. NAME .. "!",
-  "  - Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app",
-  "  - It is saved whenever you log off or reload the interface. Click the " .. WJ.EMBLEM .. " icon by the minimap to save at any time",
-  "  - The addon's options menu, under Options, AddOns, Widsith, has more details and support information",
-  "  - A lightweight companion app from widsith.app uploads your progress for you whenever you save",
+  BULLET .. "Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app",
+  BULLET .. "It is saved whenever you log off or reload the interface. Click the " .. WJ.EMBLEM .. " icon by the minimap to save at any time",
+  BULLET .. "The addon's options menu, under Options, AddOns, Widsith, has more details and support information",
+  BULLET .. "A lightweight companion app from widsith.app uploads your progress for you whenever you save",
   "More details at widsith.app",
 }
 
 local function block(points)
-  return RULE .. "\n" .. WJ.EMBLEM .. " " .. table.concat(points, "\n\n") .. "\n" .. RULE .. "\n"
+  WJ.say(RULE, true)
+  WJ.say(WJ.EMBLEM .. " " .. table.concat(points, "\n\n"), true)
+  WJ.say(RULE .. "\n", true)
 end
 
 -- What changed that a player would notice, by version, a few words each. The
@@ -68,14 +74,14 @@ function WJ.tellNews()
   if not account or account.seenVersion == WJ.VERSION then return false end
   local version = WJ.VERSION
   if account.seenVersion == nil and not account.usedBefore then
-    WJ.say(block(WELCOME), true)
+    block(WELCOME)
   else
     local points = { NAME .. " " .. version .. " is installed." }
     if NOTES[version] then points[#points + 1] = "What's new:" end
     for _, note in ipairs(NOTES[version] or {}) do
-      if note.chat then points[#points + 1] = "  - " .. note[1] end
+      if note.chat then points[#points + 1] = BULLET .. note[1] end
     end
-    WJ.say(block(points), true)
+    block(points)
   end
   account.seenVersion = version
   return true

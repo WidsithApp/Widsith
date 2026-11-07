@@ -84,20 +84,26 @@ test("the welcome is said once, at the first login on the account", function(gam
   game.advance(4)
   local welcome = game.said("Thank you for installing")
   expect(welcome ~= nil, "no welcome at the first login")
-  expect(welcome and welcome:find("^%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-\n|TInterface\\AddOns\\Widsith\\media\\flame%-chat:16:16|t Thank you for installing |cff33ff99Widsith|r!\n"),
-    "the welcome doesn't open with a rule, the flame and the thanks: " .. tostring(welcome))
-  local lines = {}
-  for line in (((welcome or "") .. "\n"):gsub("|T[^|]*|t ?", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+  expect(welcome and welcome:find("^|TInterface\\AddOns\\Widsith\\media\\flame%-chat:16:16|t Thank you for installing |cff33ff99Widsith|r!\n"),
+    "the welcome doesn't open with the flame and the thanks: " .. tostring(welcome))
+  -- A rule above and below, each a message of its own so it sits at the margin, and the block
+  -- between them with a blank line between its points, each behind a bullet in the flame's colour.
   local RULE = "----------------------------------------"
-  same(lines, { RULE, "Thank you for installing Widsith!", "",
-    "  - Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app", "",
-    "  - It is saved whenever you log off or reload the interface. Click the icon by the minimap to save at any time", "",
-    "  - The addon's options menu, under Options, AddOns, Widsith, has more details and support information", "",
-    "  - A lightweight companion app from widsith.app uploads your progress for you whenever you save", "",
-    "More details at widsith.app", RULE, "" },
-    "the welcome's lines: a rule above and below, a blank line between the points")
+  local at
+  for i, line in ipairs(game.chat) do if line == welcome then at = i end end
+  eq(game.chat[at - 1], RULE, "the rule above the welcome")
+  eq(game.chat[at + 1], RULE .. "\n", "the rule below the welcome, closing with a blank line")
+  local lines = {}
+  for line in (((welcome or "") .. "\n"):gsub("|T[^|]*|t ?", "")):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+  local B = "  |cfff4b04a\226\128\162|r "
+  same(lines, { "Thank you for installing |cff33ff99Widsith|r!", "",
+    B .. "Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app", "",
+    B .. "It is saved whenever you log off or reload the interface. Click the icon by the minimap to save at any time", "",
+    B .. "The addon's options menu, under Options, AddOns, Widsith, has more details and support information", "",
+    B .. "A lightweight companion app from widsith.app uploads your progress for you whenever you save", "",
+    "More details at widsith.app" },
+    "the welcome's lines")
   expect(welcome and welcome:find("Click the |TInterface\\AddOns\\Widsith\\media\\flame%-chat:16:16|t icon by the minimap"), "the save line doesn't draw the icon it names")
-  expect(welcome and welcome:sub(-1) == "\n", "the welcome doesn't close with a blank line")
   local messages = 0
   for _, line in ipairs(game.chat) do if line:find("Thank you for installing", 1, true) or line:find("Your gameplay is now", 1, true) then messages = messages + 1 end end
   eq(messages, 1, "the welcome's chat messages: one, its lines under one heading")
@@ -114,26 +120,28 @@ end)
 
 test("a new version is announced once per account as one message listing what changed, not as a welcome", function(game)
   game.saved = { WidsithAccount = { settings = {}, seenVersion = "0.6.3" } }
-  -- Said as the world is entered, in the place of the recorder's own "is recording" line.
+  -- Said as the world is entered, in the place of the recorder's own "is recording" line: a rule,
+  -- the block, a rule, three messages.
   game.login()
   game.advance(4)
   local said = chatSince(game, 0)
   expect(not game.said("Thank you for installing"), "an upgrade was welcomed as a first use")
-  eq(#said, 1, "chat messages at the login: one, the version's news in the recording line's place")
-  local lines = {}
-  for line in ((said[1] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+  eq(#said, 3, "chat messages at the login: the rule, the news, the rule")
   local RULE = "----------------------------------------"
-  same({ lines[1], lines[2], lines[3], lines[4] }, { RULE, "Widsith " .. game.version .. " is installed.", "", "What's new:" }, "the block's opening")
-  same({ lines[13], lines[14] }, { RULE, "" }, "the block's close")
+  eq(said[1], RULE, "the rule above")
+  eq(said[3], RULE .. "\n", "the rule below, closing with a blank line")
+  local lines = {}
+  for line in ((said[2] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+  local B = "  \226\128\162 "
+  same(lines, { "Widsith " .. game.version .. " is installed.", "", "What's new:", "",
+    B .. "Screenshot highlights and chat in the screenshots are now on by default", "",
+    B .. "Changes to your Widsith settings are now shared across all your characters", "",
+    B .. "Pause and Resume are now Stop and Start, which is what they do: a stopped recording records nothing", "",
+    B .. "A character whose recording you stopped stays stopped until you start it again" },
+    "the news: the version, What's new, the points a blank line apart behind bullets")
   -- Chat gets what a player may act on or what changes the way things work; the About page
   -- lists everything, the reminder's new length and the menu's shape included.
-  same({ lines[5], lines[6], lines[7], lines[8], lines[9], lines[10], lines[11], lines[12] }, { "",
-    "  - Screenshot highlights and chat in the screenshots are now on by default", "",
-    "  - Changes to your Widsith settings are now shared across all your characters", "",
-    "  - Pause and Resume are now Stop and Start, which is what they do: a stopped recording records nothing", "",
-    "  - A character whose recording you stopped stays stopped until you start it again" }, "the message's list, a blank line between the points")
-  expect(said[1]:sub(-1) == "\n", "the version's news doesn't close with a blank line")
-  expect(not said[1]:find("45 minutes", 1, true) and not said[1]:find("under Icon", 1, true), "a change a player can only see is in the message")
+  expect(not said[2]:find("45 minutes", 1, true) and not said[2]:find("under Icon", 1, true), "a change a player can only see is in the message")
   eq(#game.addon.whatsNew(), 6, "the About page's notes")
   -- The About page lists the notes under a heading with the version.
   local about = game.panelRow("About")
