@@ -1,16 +1,17 @@
 // The addon's checks, as CI runs them and as anyone can run them from the addon's folder:
-// `node tools/check.mjs`. Every Lua file must parse, and the recorder must get through its
-// stand-in client (tools/recorder-mock.lua) without a Lua error, without writing an ERR line
-// (or a SPEECH line, which is switched off), and without the stand-in finding any of the lines
-// it checks wrong ("-- expect FAIL"). Needs Node and nothing installed: npx fetches luaparse and
-// fengari, at the versions named below.
+// `node tools/check.mjs`. Every Lua file must parse as the game's Lua 5.1 would read it, and
+// every test under tools/tests must pass on the stand-in client (tools/harness). Needs Node and
+// nothing installed: npx fetches luaparse and fengari, at the versions named below.
 //
 // fengari, the Lua the stand-in client runs on, exits with success even when the Lua code
-// throws, so a run is judged by what it prints: a "stack traceback" is an error, and the
-// stand-in ends with a summary line that a run cut short never reaches.
+// throws, so the runner reports through its exit code and a run cut short by an error (a
+// "stack traceback" with no summary line) is a failure too.
+//
+// `node tools/check.mjs tests` runs the tests alone; `node tools/check.mjs tests money` runs the
+// test files whose names contain the word.
 
 import { spawnSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,6 +20,7 @@ const FENGARI = 'fengari-node-cli@0.1.0';
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 // The addon's folder, wherever the check is started from.
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const [mode, filter] = process.argv.slice(2);
 
 function run(args) {
 	const result = spawnSync(npx, ['--yes', ...args], {
@@ -33,26 +35,37 @@ let failed = false;
 function fail(message, output = '') {
 	failed = true;
 	console.error(`FAIL ${message}`);
-	if (output) console.error(output.split('\n').slice(-20).join('\n'));
+	if (output) console.error(output.split('\n').slice(-30).join('\n'));
 }
 
-for (const folder of ['.', 'tools']) {
-	for (const name of readdirSync(join(root, folder)).filter((file) => file.endsWith('.lua'))) {
-		const file = relative(root, join(root, folder, name)).split('\\').join('/');
-		const result = run([LUAPARSE, file]);
-		if (result.status !== 0) fail(`${file} doesn't parse`, result.output);
-		else console.log(`parses: ${file}`);
+const luaFiles = (folder) =>
+	readdirSync(join(root, folder))
+		.filter((file) => file.endsWith('.lua'))
+		.sort()
+		.map((name) => relative(root, join(root, folder, name)).split('\\').join('/'));
+
+if (mode !== 'tests') {
+	for (const folder of ['.', 'tools', 'tools/harness', 'tools/tests']) {
+		for (const file of luaFiles(folder)) {
+			const result = run([LUAPARSE, file]);
+			if (result.status !== 0) fail(`${file} doesn't parse`, result.output);
+			else console.log(`parses: ${file}`);
+		}
 	}
 }
 
-const recorder = run(['-p', FENGARI, 'fengari', 'tools/recorder-mock.lua']).output;
-const summary = recorder.split('\n').find((line) => /^-- [A-Z]+=\d/.test(line));
-if (recorder.includes('stack traceback')) fail('the recorder threw under its stand-in client', recorder);
-else if (!summary) fail("the recorder's stand-in client never reached its summary", recorder);
-else if (/\bERR=/.test(summary)) fail('the recorder wrote ERR lines', recorder);
-else if (/\bSPEECH=/.test(summary)) fail('the recorder wrote SPEECH lines, which are switched off', recorder);
-else if (/^-- chat: /m.test(recorder)) fail('the recorder said something went wrong in chat', recorder);
-else if (/^-- expect FAIL/m.test(recorder)) fail("the recorder's lines aren't what its stand-in client expects", recorder);
-else console.log(`recorder: ${summary}`);
+const version = readFileSync(join(root, 'Widsith.toc'), 'utf8').match(/^## Version:\s*(\S+)/m)?.[1] ?? '0.0.0';
+const tests = luaFiles('tools/tests').filter((file) => !filter || file.includes(filter));
+if (tests.length === 0) fail('no test files to run');
+else {
+	const result = run(['-p', FENGARI, 'fengari', 'tools/harness/run.lua', '--version', version, ...tests]);
+	const summary = result.output.split('\n').find((line) => /^-- \d+ passed/.test(line));
+	if (result.output.includes('stack traceback') && !summary) fail('the test run ended in a Lua error', result.output);
+	else if (!summary) fail('the test run never reached its summary', result.output);
+	else if (result.status !== 0) fail(`tests failed: ${summary}`, result.output);
+	else {
+		console.log(result.output.trimEnd());
+	}
+}
 
 process.exit(failed ? 1 : 0);

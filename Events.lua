@@ -962,7 +962,11 @@ end
 
 -- Set a reason. opts.after: the game's own report, which may come after the
 -- change it explains; if the change already came (by the same amount, with no
--- reason, or under another reason that stated it), the report adds nothing.
+-- reason, under another reason, or under this reason without its amount, as a
+-- loot window's coin is written before its message under auto-loot), the
+-- report adds nothing. A change this reason already explained with the same
+-- amount is a different matter: the report is for the next change, as when
+-- two corpses each hold the same coin.
 -- opts.replaces: a confirmation that takes the place of the request before it.
 -- opts.repeats: one call that brings several changes (selling all junk), each
 -- of which carries it, until two seconds pass without one or something else
@@ -981,8 +985,8 @@ local function moneyReason(kind, said, source, opts)
       end
     end
     local c = lastChange
-    if c and now - c.at < MONEY_WINDOW and c.delta and math.abs(c.delta) == said and c.kind ~= kind then
-      c.kind = c.kind or kind
+    if c and now - c.at < MONEY_WINDOW and c.delta and math.abs(c.delta) == said and (c.kind ~= kind or c.said == nil) then
+      c.kind, c.said = c.kind or kind, c.said or said
       return
     end
     for _, r in ipairs(pending) do
@@ -1078,7 +1082,7 @@ local function writeChanges()
   for _, c in ipairs(due) do
     local r = c.reason
     write("MONEY", c.total, r and r.kind, c.window, r and r.said, r and r.source)
-    lastChange = { at = c.at, delta = c.delta, kind = r and r.kind }
+    lastChange = { at = c.at, delta = c.delta, kind = r and r.kind, said = r and r.said }
     lastTotal = plainNumber(c.total)
   end
 end

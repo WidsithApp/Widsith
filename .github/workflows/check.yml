@@ -1,4 +1,4 @@
-# Every Lua file parses, and the recorder gets through its stand-in client without an error
+# Every Lua file parses, and every test passes on the stand-in client
 # (tools/check.mjs, which can be run the same way locally).
 
 name: Check

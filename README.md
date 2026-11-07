@@ -76,8 +76,11 @@ With "Screenshot highlights" turned on, Widsith takes a screenshot when you reac
 
 `tools/` is for working on the addon and is not needed to play with it.
 
-- `check.mjs` is what runs on every pull request: `node tools/check.mjs` from this folder. Every Lua file must parse, and the recorder must get through `recorder-mock.lua` without a Lua error or a wrong line. It needs Node and nothing installed.
-- `recorder-mock.lua` is a rough stand-in for the game client. It loads the recorder (all but `Save.lua`), plays some made-up play through it with hidden values that raise an error on any use, and prints the lines written. It catches a typo or a missing check for a hidden value without starting the game, though it cannot show what the real game answers. Run it with `npx --yes -p fengari-node-cli fengari tools/recorder-mock.lua`.
+- `check.mjs` is what runs on every pull request: `node tools/check.mjs` from this folder. Every Lua file must parse as the game's Lua would read it, and every test must pass. It needs Node and nothing installed. `node tools/check.mjs tests` runs the tests alone, and `node tools/check.mjs tests money` only the files whose names contain the word.
+- `harness/` is a stand-in for the game client and a test runner. `client.lua` builds a game outside the game: the globals the addon reads, a clock, frames, timers, and a world a test changes by name, as two client profiles (WoW Forever and Retail) with the facts each was seen to have; hidden values are objects that raise an error on any use. It can log in, reload the interface on the saved file the way the game does, press the icon and its menu, and read the settings panel and chat. `run.lua` runs the files under `tests/`, each test on a fresh game and on both profiles unless it says otherwise.
+- `tests/` holds one file per theme: money, fights, auras, quests and loot, the world, sessions, the extras, the commands, screenshots, and the icon with the settings panel. A test says in a plain sentence what must be so, plays it, and reads the lines written or what the player was told.
+
+The stand-in answers only what the game was seen to answer, on the builds its profiles name. A test passing means the addon still does what the game was last seen to do, and nothing more: the real game is checked in the game. When a recording shows the game answering differently, the stub changes with the fix.
 - `build-flame.mjs` and `build-glow.mjs` draw the images in `media/`. The flame script needs sharp, so run `npm install` in `tools/` first. Given a folder or file such as `tools/previews`, they also write previews to look at.
 
 ## Licence
