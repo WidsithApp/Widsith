@@ -18,21 +18,29 @@ local WELCOME = {
   "The game saves the recording when you log out or reload. Click the icon by the minimap to save at any time, right-click it for the settings, or type /widsith help.",
 }
 
--- What changed that a player would notice, by version, a few words each. A
+-- What changed that a player would notice, by version, a few words each. The
+-- About page lists them all. Chat gets only the ones marked for it: what a
+-- player may need to act on, or what changes the way things work. A change
+-- they will simply see, or can do nothing about, stays off the message. A
 -- version with no entry is announced alone.
 local NOTES = {
   ["0.7.0"] = {
-    "Screenshot highlights on by default, with chat in the pictures",
-    "The save reminder at 45 minutes",
-    "The icon's settings under Icon in the menu",
-    "Settings shared by all your characters",
-    "A paused character stays paused until you resume it",
+    { "Screenshot highlights on by default", chat = true },
+    { "Chat shown in the screenshots by default", chat = true },
+    { "Settings shared by all your characters", chat = true },
+    { "A paused character stays paused until you resume it", chat = true },
+    { "The save reminder at 45 minutes" },
+    { "The icon's settings under Icon in the menu" },
   },
 }
 
 -- The notes for this version, for the About page.
 function WJ.whatsNew()
-  return NOTES[WJ.VERSION]
+  local notes = NOTES[WJ.VERSION]
+  if not notes then return nil end
+  local out = {}
+  for _, note in ipairs(notes) do out[#out + 1] = note[1] end
+  return out
 end
 
 -- Lines as one message, the first on the name's line and the rest under it.
@@ -49,7 +57,9 @@ local function tell()
     WJ.say(asOne(WELCOME))
   elseif NOTES[version] then
     local lines = { version .. " is installed. What's new:" }
-    for _, note in ipairs(NOTES[version]) do lines[#lines + 1] = "  - " .. note end
+    for _, note in ipairs(NOTES[version]) do
+      if note.chat then lines[#lines + 1] = "  - " .. note[1] end
+    end
     WJ.say(asOne(lines))
   else
     WJ.say(version .. " is installed.")

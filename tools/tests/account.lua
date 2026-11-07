@@ -109,10 +109,13 @@ test("a new version is announced once per account as one message listing what ch
   local lines = {}
   for line in ((said[1] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
   eq(lines[1], "Widsith " .. game.version .. " is installed. What's new:", "the message's first line")
-  expect(#lines >= 3 and lines[2]:find("^  %- ") ~= nil, "the notes don't follow as a list: " .. tostring(lines[2]))
-  for _, note in ipairs(game.addon.whatsNew()) do
-    expect(said[1]:find("  - " .. note, 1, true), "a note is missing from the message: " .. note)
-  end
+  -- Chat gets what a player may act on or what changes the way things work; the About page
+  -- lists everything, the reminder's new length and the menu's shape included.
+  same({ lines[2], lines[3], lines[4], lines[5], lines[6] }, { "  - Screenshot highlights on by default",
+    "  - Chat shown in the screenshots by default", "  - Settings shared by all your characters",
+    "  - A paused character stays paused until you resume it" }, "the message's list")
+  expect(not said[1]:find("45 minutes", 1, true) and not said[1]:find("under Icon", 1, true), "a change a player can only see is in the message")
+  eq(#game.addon.whatsNew(), 6, "the About page's notes")
   -- The About page lists the notes under a heading with the version.
   local about = game.panelRow("About")
   local texts = {}
