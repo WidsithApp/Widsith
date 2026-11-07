@@ -178,7 +178,7 @@ test("a cave counts as its zone and a continent is no zone", function(game)
   same(game.fieldsOf("SHOT"), { "zone" }, "SHOT lines")
 end)
 
-test("only the first death has a picture, but every death does on a Hardcore realm", function(game)
+test("only the first death has a picture", function(game)
   withHighlights(game)
   game.addon.SHOT_GAP = 1
   game.fire("PLAYER_DEAD")
@@ -189,6 +189,17 @@ test("only the first death has a picture, but every death does on a Hardcore rea
   game.addon.highlightShot("death", "first")
   game.advance(3)
   shots(game, 1, "a second death")
+  same(game.fieldsOf("SHOT"), { "death" }, "SHOT lines")
+end)
+
+-- Hardcore realms are WoW Forever's: Retail has no C_GameRules.IsHardcoreActive to ask.
+test("every death has a picture on a Hardcore realm", { client = "forever" }, function(game)
+  withHighlights(game)
+  game.addon.SHOT_GAP = 1
+  game.fire("PLAYER_DEAD")
+  game.advance(3)
+  game.fire("PLAYER_ALIVE")
+  game.advance(2)
   game.world.hardcore = true
   game.addon.highlightShot("death", "first")
   game.advance(3)

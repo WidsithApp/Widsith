@@ -78,15 +78,19 @@ end)
 -- /widsith check
 ---------------------------------------------------------------------------
 
--- What each client lacks of what the recorder uses, in the order the recorder lists them. WoW
--- Forever has no pet battles; Retail has no day and night and no stable.
+-- What each client lacks of what the recorder uses, in the order the recorder lists them, as
+-- /widsith check was seen to print it: on WoW Forever the old GetSpecialization global alone; on
+-- Retail the Skills tab's two calls, the defence skill, the Forever rules and preset, the spec
+-- group's config, day and night, and the stable's two calls.
 local MISSING_FUNCTIONS = {
-  forever = "C_PetBattles.IsInBattle, C_PetBattles.GetNumPets, C_PetBattles.GetPetSpeciesID, C_PetBattles.IsWildBattle, "
-    .. "C_PetBattles.IsPlayerNPC",
-  retail = "C_DateAndTime.IsDayTime, C_StableInfo.BuyStableSlot, C_StableInfo.GetNextStableSlotCost",
+  forever = "GetSpecialization",
+  retail = "C_SkillInfo.GetSkillLineInfo, C_SkillInfo.GetSkillLineInfoByID, UnitDefenseSkill, "
+    .. "C_GameRules.IsHardcoreActive, C_GameRules.GetForeverExperiencePreset, "
+    .. "C_SpecializationInfo.GetCombatConfigIDForSpecGroup, C_DateAndTime.IsDayTime, "
+    .. "C_StableInfo.BuyStableSlot, C_StableInfo.GetNextStableSlotCost",
 }
 local MISSING_EVENTS = {
-  forever = "PET_BATTLE_CLOSE, PET_BATTLE_FINAL_ROUND, PET_BATTLE_OPENING_START",
+  forever = "none",
   retail = "DIEL_CYCLE_CHANGED",
 }
 

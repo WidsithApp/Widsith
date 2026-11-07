@@ -32,10 +32,11 @@ local PROFILES = {
     realm = "CAMWOW US1 Realm 3 PvE", realmN = "CAMWOWUS1Realm3PvE", region = 1,
     surname = "Thornby",           -- every character has one; UnitName gives it
     dayTime = true,                -- C_DateAndTime.IsDayTime and DIEL_CYCLE_CHANGED exist
-    petBattles = false,            -- no C_PetBattles, and its events can't be registered
     diel = true,                   -- the minimap's day/night dial and its ring atlas
-    missingEvents = { PET_BATTLE_OPENING_START = true, PET_BATTLE_FINAL_ROUND = true, PET_BATTLE_CLOSE = true },
-    absent = { C_PetBattles = true },
+    missingEvents = {},
+    -- /widsith check on 1.60.1 build 70840 named the old GetSpecialization global alone (the
+    -- events line is still to be seen); pet battles and the stable are there.
+    absent = { "GetSpecialization" },
   },
   retail = {
     label = "retail",
@@ -43,16 +44,18 @@ local PROFILES = {
     realm = "Whitemane", realmN = "Whitemane", region = 1,
     surname = nil,
     dayTime = false,
-    petBattles = true,
     diel = false,                  -- the classic minimap button ring
     missingEvents = { DIEL_CYCLE_CHANGED = true },
-    absent = { C_StableInfo = true },   -- the stable's calls are not in Retail 12.1.5
+    -- /widsith check on 12.1.5 build 70783 named these nine, in this order, and the one event.
+    absent = { "C_SkillInfo.GetSkillLineInfo", "C_SkillInfo.GetSkillLineInfoByID", "UnitDefenseSkill",
+      "C_GameRules.IsHardcoreActive", "C_GameRules.GetForeverExperiencePreset",
+      "C_SpecializationInfo.GetCombatConfigIDForSpecGroup", "C_DateAndTime.IsDayTime",
+      "C_StableInfo.BuyStableSlot", "C_StableInfo.GetNextStableSlotCost" },
   },
 }
--- On Retail, /widsith check was seen to name three missing functions (the two stable calls and
--- C_DateAndTime.IsDayTime) and one missing event (DIEL_CYCLE_CHANGED). On WoW Forever the pet
--- battle calls and events are the ones expected missing. Both clients have C_SkillInfo; the
--- stand-in's answers no skill lines until they are stubbed.
+-- `absent` names what each client lacks of what the recorder uses, as a function's path: a global
+-- or namespace.name. The stubs define every one of them, and the ones a profile names are taken
+-- out after the environment is built, so a namespace stays while a call in it goes, as in the game.
 
 local SECRET = setmetatable({}, {
   __index = function() error("SECRET indexed", 2) end,
@@ -748,21 +751,21 @@ local function newGame(profileName, dir, version)
       end,
       GenerateImportString = function() return "BcQAAAAAAAAAAAAAAAAAAAAA" .. world.talent.group end,
     }
-    -- The experience preset is WoW Forever's; the call exists on Retail too, where what it
-    -- answers hasn't been seen, so it answers nothing there.
     G.C_GameRules = { IsHardcoreActive = function() return world.hardcore end,
-      GetForeverExperiencePreset = function() if profile.label == "forever" then return 1 end end }
+      GetForeverExperiencePreset = function() return 1 end }
     G.C_PlayerInfo = { IsSelfFoundActive = function() return false end }
     -- The Skills tab: no lines until its answers are stubbed, so the recorder writes the
     -- professions alone.
     G.C_SkillInfo = { GetNumSkillLines = function() return 0 end, GetSkillLineInfo = function() end,
       GetSkillLineInfoByID = function() end }
+    G.C_StableInfo = { BuyStableSlot = function() end, GetNextStableSlotCost = function() return 0 end }
+    G.GetSpecialization = function() return 1 end
+    G.UnitDefenseSkill = function() return 1, 0 end
 
     -- The weather where the character is (WeatherScriptDocumentation.lua: a WeatherInfo of type and
     -- intensity), and whether it is day (C_DateAndTime.IsDayTime, WoW Forever's API).
     G.C_Weather = { GetCurrentWeather = function() return world.weather end }
-    G.C_DateAndTime = {}
-    if profile.dayTime then G.C_DateAndTime.IsDayTime = function() return world.daytime end end
+    G.C_DateAndTime = { IsDayTime = function() return world.daytime end }
 
     -- The world map, the emote the game performs when it opens, and chat's lockdown
     G.WorldMapFrame = { IsShown = function() return world.mapShown end }
@@ -886,11 +889,23 @@ local function newGame(profileName, dir, version)
       return { kind = "button", name = name, button = buttonText, press = press, tooltip = tooltip }
     end
 
-    -- Anything not stubbed: functions that return nothing, namespaces with such functions; the
-    -- namespaces the profile says this client lacks answer nil.
+    -- What this client lacks: each path taken out, the namespace kept.
+    local absentGlobals = {}
+    for _, path in ipairs(profile.absent) do
+      local namespace, name = path:match("^([^.]+)%.(.+)$")
+      if namespace then
+        if type(rawget(G, namespace)) == "table" then G[namespace][name] = nil end
+      else
+        G[path] = nil
+        absentGlobals[path] = true
+      end
+    end
+
+    -- Anything not stubbed: functions that return nothing, namespaces with such functions; a
+    -- global the profile says this client lacks answers nil.
     setmetatable(G, {
       __index = function(_, key)
-        if type(key) ~= "string" or key:find("^Widsith") or profile.absent[key] then return nil end
+        if type(key) ~= "string" or key:find("^Widsith") or absentGlobals[key] then return nil end
         if key:find("^C_") then return emptyNamespace end
         if key:find("^%u%l") then return nothing end
         return nil
