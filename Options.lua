@@ -120,10 +120,17 @@ local function createAbout()
     head:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -18)
     head:SetText("What's new in " .. WJ.VERSION)
     last = head
-    for _, line in ipairs(notes) do
+    -- A list: a bullet in its own column, the text beside it wrapping under itself.
+    local INDENT = 14
+    for i, line in ipairs(notes) do
+      local bullet = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+      bullet:SetPoint("TOPLEFT", last, "BOTTOMLEFT", i == 1 and 0 or -INDENT, i == 1 and -6 or -5)
+      bullet:SetWidth(INDENT)
+      bullet:SetJustifyH("LEFT")
+      bullet:SetText("•")
       local body = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-      body:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -3)
-      body:SetWidth(WIDTH)
+      body:SetPoint("TOPLEFT", bullet, "TOPLEFT", INDENT, 0)
+      body:SetWidth(WIDTH - INDENT)
       body:SetJustifyH("LEFT")
       body:SetText(line)
       last = body

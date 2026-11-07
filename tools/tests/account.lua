@@ -119,6 +119,22 @@ test("a new version is announced once per account in one line that points at the
   expect(not game.said("is installed"), "the version was announced again on another character")
 end)
 
+test("a new version installed mid-session is announced at the reload, not the next login", function(game)
+  game.saved = { WidsithAccount = { settings = {}, seenVersion = "0.6.3" } }
+  game.login()
+  game.advance(8)
+  game.clearChat()
+  -- Said once at this load; the reload is what a player does after installing a version.
+  game.G.WidsithAccount.seenVersion = "0.6.3"
+  game.reload()
+  game.advance(4)
+  expect(game.said(game.version .. " is installed."), "a reload on a version not yet seen said nothing")
+  game.clearChat()
+  game.reload()
+  game.advance(4)
+  expect(not game.said("is installed"), "a second reload announced the version again")
+end)
+
 test("a player who used the addon before this version is told the version, not welcomed", function(game)
   game.saved = { WidsithUI = { shown = true, remind = true, iconStyle = 4 } }
   game.login()

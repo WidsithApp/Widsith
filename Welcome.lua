@@ -49,10 +49,11 @@ local function tell()
   account.seenVersion = version
 end
 
+-- Once a load, at a login or a reload alike: a new version is usually installed
+-- mid-session and reloaded, and waiting for the next login would miss that.
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-frame:SetScript("OnEvent", WJ.guard("welcome", function(self, _, isLogin)
-  if not isLogin then return end
+frame:SetScript("OnEvent", WJ.guard("welcome", function(self)
   C_Timer.After(DELAY, WJ.guard("welcome", tell))
   self:UnregisterEvent("PLAYER_ENTERING_WORLD")
 end))
