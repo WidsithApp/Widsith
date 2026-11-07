@@ -26,11 +26,11 @@ local BULLET = "  |cfff4b04a\226\128\162|r "   -- a bullet, as its UTF-8 bytes: 
 
 local WELCOME = {
   "Thank you for installing " .. NAME .. "!",
-  BULLET .. "Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app",
-  BULLET .. "It is saved whenever you log off or reload the interface. Click the " .. WJ.EMBLEM .. " icon by the minimap to save at any time",
-  BULLET .. "The addon's options menu, under Options, AddOns, Widsith, has more details and support information",
-  BULLET .. "A lightweight companion app from widsith.app uploads your progress for you whenever you save",
-  "More details at widsith.app",
+  BULLET .. "Your gameplay is now being recorded, view it or share it by uploading the file at widsith.app",
+  BULLET .. "It is automatically saved whenever you log off, or reload the interface. Click the " .. WJ.ICON .. " icon to manually trigger a reload",
+  BULLET .. "View the addon options for additional details and support information",
+  BULLET .. "A lightweight companion app is available on widsith.app that will automatically upload your progress for you whenever you save",
+  "More details @ widsith.app",
 }
 
 local function block(points)
@@ -46,10 +46,10 @@ end
 -- version with no entry is announced alone.
 local NOTES = {
   ["0.7.0"] = {
-    { "Screenshot highlights and chat in the screenshots are now on by default", chat = true },
-    { "Changes to your Widsith settings are now shared across all your characters", chat = true },
-    { "Pause and Resume are now Stop and Start, which is what they do: a stopped recording records nothing", chat = true },
-    { "A character whose recording you stopped stays stopped until you start it again", chat = true },
+    { "Screenshot highlights, and the include chat in screenshots options are now enabled by default", chat = true },
+    { "Changes you make to the general Widsith configuration are now shared across all your characters", chat = true },
+    { "Pause and Resume have been changed to Stop and Start to better reflect their behaviour", chat = true },
+    { "Characters that have had their recording stopped, now will not start again until manually started.", chat = true },
     { "The save reminder comes after 45 minutes of unsaved play" },
     { "The icon's settings are under Icon in the menu, and Show chat messages is in the options window" },
   },

@@ -97,13 +97,13 @@ test("the welcome is said once, at the first login on the account", function(gam
   for line in (((welcome or "") .. "\n"):gsub("|T[^|]*|t ?", "")):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
   local B = "  |cfff4b04a\226\128\162|r "
   same(lines, { "Thank you for installing |cff33ff99Widsith|r!", "",
-    B .. "Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app", "",
-    B .. "It is saved whenever you log off or reload the interface. Click the icon by the minimap to save at any time", "",
-    B .. "The addon's options menu, under Options, AddOns, Widsith, has more details and support information", "",
-    B .. "A lightweight companion app from widsith.app uploads your progress for you whenever you save", "",
-    "More details at widsith.app" },
+    B .. "Your gameplay is now being recorded, view it or share it by uploading the file at widsith.app", "",
+    B .. "It is automatically saved whenever you log off, or reload the interface. Click the icon to manually trigger a reload", "",
+    B .. "View the addon options for additional details and support information", "",
+    B .. "A lightweight companion app is available on widsith.app that will automatically upload your progress for you whenever you save", "",
+    "More details @ widsith.app" },
     "the welcome's lines")
-  expect(welcome and welcome:find("Click the |TInterface\\AddOns\\Widsith\\media\\flame%-chat:16:16|t icon by the minimap"), "the save line doesn't draw the icon it names")
+  expect(welcome and welcome:find("Click the |TInterface\\AddOns\\Widsith\\media\\emblem:16:16|t icon to manually"), "the save line doesn't draw the icon it names, the flame on its disc")
   local messages = 0
   for _, line in ipairs(game.chat) do if line:find("Thank you for installing", 1, true) or line:find("Your gameplay is now", 1, true) then messages = messages + 1 end end
   eq(messages, 1, "the welcome's chat messages: one, its lines under one heading")
@@ -134,10 +134,10 @@ test("a new version is announced once per account as one message listing what ch
   for line in ((said[2] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
   local B = "  \226\128\162 "
   same(lines, { "Widsith " .. game.version .. " is installed.", "", "What's new:", "",
-    B .. "Screenshot highlights and chat in the screenshots are now on by default", "",
-    B .. "Changes to your Widsith settings are now shared across all your characters", "",
-    B .. "Pause and Resume are now Stop and Start, which is what they do: a stopped recording records nothing", "",
-    B .. "A character whose recording you stopped stays stopped until you start it again" },
+    B .. "Screenshot highlights, and the include chat in screenshots options are now enabled by default", "",
+    B .. "Changes you make to the general Widsith configuration are now shared across all your characters", "",
+    B .. "Pause and Resume have been changed to Stop and Start to better reflect their behaviour", "",
+    B .. "Characters that have had their recording stopped, now will not start again until manually started." },
     "the news: the version, What's new, the points a blank line apart behind bullets")
   -- Chat gets what a player may act on or what changes the way things work; the About page
   -- lists everything, the reminder's new length and the menu's shape included.
@@ -149,7 +149,7 @@ test("a new version is announced once per account as one message listing what ch
   for _, r in ipairs(about.frame.regions) do texts[#texts + 1] = r.text end
   local joined = table.concat(texts, "\n")
   expect(joined:find("What's new in " .. game.version, 1, true), "the About page has no What's new heading")
-  expect(joined:find("Screenshot highlights and chat in the screenshots are now on by default", 1, true), "the About page doesn't list the notes")
+  expect(joined:find("Screenshot highlights, and the include chat in screenshots options are now enabled by default", 1, true), "the About page doesn't list the notes")
   expect(joined:find("The save reminder comes after 45 minutes", 1, true), "the About page leaves out a note chat doesn't carry")
   game.clearChat()
   game.loginAs("Maela", game.profile.surname and "Dunwood" or nil)

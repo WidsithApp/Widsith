@@ -173,6 +173,8 @@ end
 -- welcome), headed by the flame drawn in the line at the chat font's height
 -- and the name, rather than the plain prefix.
 WJ.EMBLEM = "|TInterface\\AddOns\\" .. ADDON_NAME .. "\\media\\flame-chat:16:16|t"
+-- The icon as it sits by the minimap, the flame on its disc, for a line that names it.
+WJ.ICON = "|TInterface\\AddOns\\" .. ADDON_NAME .. "\\media\\emblem:16:16|t"
 function WJ.announce(text)
   WJ.say(WJ.EMBLEM .. " " .. PREFIX .. text, true)
 end
