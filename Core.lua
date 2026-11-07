@@ -169,6 +169,14 @@ function WJ.say(text, bare)
   if answering or settings == nil or settings.chat ~= false then print(bare and text or (PREFIX .. text)) end
 end
 
+-- News of what the addon is doing as a load begins (recording, paused, a
+-- welcome), headed by the addon's emblem drawn in the line at the chat font's
+-- height and the name, rather than the plain prefix.
+WJ.EMBLEM = "|TInterface\\AddOns\\" .. ADDON_NAME .. "\\media\\emblem:16:16|t"
+function WJ.announce(text)
+  WJ.say(WJ.EMBLEM .. " " .. PREFIX .. text, true)
+end
+
 -- A real problem, which always shows.
 function WJ.warn(text)
   print(PREFIX .. "|cffff4444Problem|r " .. text)
@@ -303,10 +311,14 @@ function WJ.startSession(isLogin, isReload, isResume)
       previousOnFile = format("previous session on file: %s%s.", count(previous.lines or 0, "line", "lines"),
         previous.closed and "" or ", |cffff4444not closed cleanly|r")
     end
-    if isLogin then
-      WJ.say(WJ.VERSION .. " is recording. Type /widsith help for commands.")
+    -- A welcome or a version's news due at this load says that it is recording
+    -- itself (Welcome.lua), so the line isn't said twice.
+    if WJ.newsDue and WJ.newsDue() then
+      -- said by the news
+    elseif isLogin then
+      WJ.announce(WJ.VERSION .. " is recording. Type /widsith help for commands.")
     else
-      WJ.say("is recording.")
+      WJ.announce("is recording.")
     end
     if WJ.debug then print(PREFIX .. previousOnFile) end
   end
@@ -351,7 +363,7 @@ end
 -- the player is told once, since the icon shows it out as well.
 local function stayPaused()
   paused = true
-  WJ.say("is paused on this character. Resume recording from the icon or with /widsith resume.")
+  WJ.announce("is paused on this character. Resume recording from the icon or with /widsith resume.")
   if WJ.onRecordingStarted then WJ.guard("recordingStarted", WJ.onRecordingStarted)() end
 end
 

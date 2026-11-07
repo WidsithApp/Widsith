@@ -2,14 +2,19 @@
 -- (Options.lua), and what a reload carries across: what the player is told and what each control
 -- does, on a client that never draws.
 
-test("a login lights the icon and says the version is recording", function(game)
+test("a login lights the icon and says the version is recording, under the emblem", function(game)
+  -- An account that has seen this version: a first login says the welcome in this line's place.
+  game.saved = { WidsithAccount = { settings = {}, seenVersion = game.version } }
   game.login()
   game.advance(8)
   local icon = game.icon()
   expect(icon ~= nil, "no icon frame was made at login")
   expect(icon and icon:IsShown(), "the icon isn't shown by default")
   expect(game.addon.isRecording(), "not recording after login")
-  expect(game.said(game.version .. " is recording. Type /widsith help for commands."), "the login line wasn't said")
+  local line = game.said(game.version .. " is recording. Type /widsith help for commands.")
+  expect(line ~= nil, "the login line wasn't said")
+  expect(line and line:find("^|TInterface\\AddOns\\Widsith\\media\\emblem:16:16|t |cff33ff99Widsith|r " .. game.version:gsub("%.", "%%.") .. " is recording"),
+    "the login line doesn't open with the emblem and the name: " .. tostring(line))
   -- The icon's disc is the addon's own; the ring is the game's: the dial's atlas on a client with
   -- the dial, the classic tracking border without it.
   local atlas, border = false, false

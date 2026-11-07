@@ -92,6 +92,8 @@ test("the welcome is said once, at the first login on the account", function(gam
   local messages = 0
   for _, line in ipairs(game.chat) do if line:find("Thank you for installing", 1, true) or line:find("Click the icon by the minimap", 1, true) then messages = messages + 1 end end
   eq(messages, 1, "the welcome's chat messages: one, its lines under one heading")
+  expect(welcome and welcome:find("installing it.\n\nThe recording is saved", 1, true), "the welcome's paragraphs aren't a blank line apart")
+  expect(not game.said("is recording. Type /widsith help"), "the login line was said beside the welcome, which says it itself")
   eq(game.G.WidsithAccount.seenVersion, game.version, "the version the account has seen")
   game.clearChat()
   game.reload()
@@ -104,15 +106,15 @@ end)
 
 test("a new version is announced once per account as one message listing what changed, not as a welcome", function(game)
   game.saved = { WidsithAccount = { settings = {}, seenVersion = "0.6.3" } }
+  -- Said as the world is entered, in the place of the recorder's own "is recording" line.
   game.login()
-  local from = #game.chat
   game.advance(4)
-  local said = chatSince(game, from)
+  local said = chatSince(game, 0)
   expect(not game.said("Thank you for installing"), "an upgrade was welcomed as a first use")
-  eq(#said, 1, "chat messages for the new version: one, its lines under one name")
+  eq(#said, 1, "chat messages at the login: one, the version's news in the recording line's place")
   local lines = {}
   for line in ((said[1] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
-  eq(lines[1], "Widsith " .. game.version .. " is installed. What's new:", "the message's first line")
+  eq(lines[1], "Widsith " .. game.version .. " is installed and recording. What's new:", "the message's first line")
   -- Chat gets what a player may act on or what changes the way things work; the About page
   -- lists everything, the reminder's new length and the menu's shape included.
   same({ lines[2], lines[3], lines[4], lines[5], lines[6] }, { "  - Screenshot highlights on by default",
@@ -142,7 +144,8 @@ test("a new version installed mid-session is announced at the reload, not the ne
   game.G.WidsithAccount.seenVersion = "0.6.3"
   game.reload()
   game.advance(4)
-  expect(game.said(game.version .. " is installed."), "a reload on a version not yet seen said nothing")
+  expect(game.said(game.version .. " is installed and recording."), "a reload on a version not yet seen said nothing")
+  expect(not game.said("is recording."), "the reload line was said beside the version note, which says it itself")
   game.clearChat()
   game.reload()
   game.advance(4)
@@ -154,7 +157,7 @@ test("a player who used the addon before this version is told the version, not w
   game.login()
   game.advance(4)
   expect(not game.said("Thank you for installing"), "an existing player was welcomed as new")
-  expect(game.said(game.version .. " is installed."), "an existing player wasn't told the version")
+  expect(game.said(game.version .. " is installed and recording."), "an existing player wasn't told the version")
 end)
 
 test("with Show chat messages off, nothing is said at login, the welcome included", function(game)

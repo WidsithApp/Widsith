@@ -3,23 +3,18 @@
 -- The first time the addon runs on an account, a welcome: what it does, how
 -- the recording is saved, where the settings are. After that, the first load
 -- of a new version says so and lists what changed that a player would notice,
--- in a few words each. Either is one chat message, its lines under one name,
--- not a line of chat per point. Each is said once per account, kept in
--- WidsithAccount, a few seconds after the recorder's own login line so the two
--- read in order. Through the same channel as the recorder's news, so "Show
--- chat messages" off keeps it quiet. The About page lists the same notes.
+-- in a few words each. Either is one chat message under the emblem and the
+-- name, not a line of chat per point, and it takes the place of the
+-- recorder's own "is recording" line at that load, saying so itself. Each is
+-- said once per account, kept in WidsithAccount. Through the same channel as
+-- the recorder's news, so "Show chat messages" off keeps it quiet. The About
+-- page lists the same notes.
 
-local ADDON_NAME, WJ = ...
+local _, WJ = ...
 
-local DELAY = 3   -- s after entering the world
-
--- The addon's emblem, drawn in the line at the chat font's height, so the
--- message starts with the icon the text tells the player to click.
-local EMBLEM = "|TInterface\\AddOns\\" .. ADDON_NAME .. "\\media\\emblem:16:16|t"
-local NAME = "|cff33ff99" .. WJ.NAME .. "|r"
-
+-- Paragraphs, a blank line between them.
 local WELCOME = {
-  EMBLEM .. " " .. NAME .. " is now recording. Thank you for installing it.",
+  "is now recording. Thank you for installing it.",
   "The recording is saved whenever you log out or reload. Click the icon by the minimap to save at any time.",
   "To watch the replay, drop the file Widsith.lua on widsith.app, or let the Widsith Uploader from the same site keep it in sync for you.",
   "More, and where to find help, is under Options, AddOns, Widsith.",
@@ -50,35 +45,35 @@ function WJ.whatsNew()
   return out
 end
 
--- Lines as one message with the emblem and the name as its heading, through
--- the recorder's channel, which honours "Show chat messages"; the heading is
--- the message's own, so no prefix is put before it.
-local function announce(lines)
-  WJ.say(table.concat(lines, "\n"), true)
+-- Whether this load has news to say: the account has yet to see this version.
+function WJ.newsDue()
+  return WidsithAccount ~= nil and WidsithAccount.seenVersion ~= WJ.VERSION
 end
 
 local function tell()
   local account = WidsithAccount
-  if not account then return end
+  if not account or not WJ.newsDue() then return end
   local version = WJ.VERSION
-  if account.seenVersion == version then return end
+  local recording = WJ.isRecording() and " and recording" or ""
   if account.seenVersion == nil and not account.usedBefore then
-    announce(WELCOME)
+    WJ.announce(table.concat(WELCOME, "\n\n"))
   else
-    local lines = { EMBLEM .. " " .. NAME .. " " .. version .. " is installed." .. (NOTES[version] and " What's new:" or "") }
+    local lines = { version .. " is installed" .. recording .. "." .. (NOTES[version] and " What's new:" or "") }
     for _, note in ipairs(NOTES[version] or {}) do
       if note.chat then lines[#lines + 1] = "  - " .. note[1] end
     end
-    announce(lines)
+    WJ.announce(table.concat(lines, "\n"))
   end
   account.seenVersion = version
 end
 
 -- Once a load, at a login or a reload alike: a new version is usually installed
--- mid-session and reloaded, and waiting for the next login would miss that.
+-- mid-session and reloaded, and waiting for the next login would miss that. The
+-- recorder's frame hears the event first and leaves its "is recording" line
+-- unsaid when news is due, so this is said in its place.
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:SetScript("OnEvent", WJ.guard("welcome", function(self)
-  C_Timer.After(DELAY, WJ.guard("welcome", tell))
+  tell()
   self:UnregisterEvent("PLAYER_ENTERING_WORLD")
 end))
