@@ -82,8 +82,11 @@ test("the welcome is said once, at the first login on the account", function(gam
   game.login()
   game.advance(4)
   expect(game.said("Thanks for installing Widsith."), "no welcome at the first login")
-  expect(game.said("click the Widsith icon by the minimap"), "the welcome doesn't say how to save")
-  expect(game.said("Right-click the icon for the settings, or type /widsith help."), "the welcome doesn't say where the settings are")
+  expect(game.said("Click the icon by the minimap to save at any time, right-click it for the settings, or type /widsith help."),
+    "the welcome doesn't say how to save and where the settings are")
+  local lines = 0
+  for _, line in ipairs(game.chat) do if line:find("Thanks for installing", 1, true) or line:find("Click the icon by the minimap", 1, true) then lines = lines + 1 end end
+  eq(lines, 2, "the welcome's lines: two, no more")
   eq(game.G.WidsithAccount.seenVersion, game.version, "the version the account has seen")
   game.clearChat()
   game.reload()
@@ -94,15 +97,22 @@ test("the welcome is said once, at the first login on the account", function(gam
   expect(not game.said("Thanks for installing"), "the welcome was said again on another character")
 end)
 
-test("a new version is announced once per account, with what changed, and not as a welcome", function(game)
+test("a new version is announced once per account in one line that points at the About page, not as a welcome", function(game)
   game.saved = { WidsithAccount = { settings = {}, seenVersion = "0.6.3" } }
   game.login()
   local from = #game.chat
   game.advance(4)
   local said = chatSince(game, from)
   expect(not game.said("Thanks for installing"), "an upgrade was welcomed as a first use")
-  eq(said[1], "Widsith " .. game.version .. " is installed. What's new:", "the version line")
-  expect(#said >= 3 and said[2]:find("^Widsith ") and said[2]:find("Screenshot highlights", 1, true), "the notes don't follow: " .. tostring(said[2]))
+  eq(said[1], "Widsith " .. game.version .. " is installed. What's new is on the About page, under Options, AddOns, Widsith.", "the version line")
+  eq(#said, 1, "lines said for the new version: one, the list is the About page's")
+  -- The About page lists the notes under a heading with the version.
+  local about = game.panelRow("About")
+  local texts = {}
+  for _, r in ipairs(about.frame.regions) do texts[#texts + 1] = r.text end
+  local joined = table.concat(texts, "\n")
+  expect(joined:find("What's new in " .. game.version, 1, true), "the About page has no What's new heading")
+  expect(joined:find("Screenshot highlights are on", 1, true), "the About page doesn't list the notes")
   game.clearChat()
   game.loginAs("Maela", game.profile.surname and "Dunwood" or nil)
   game.advance(4)

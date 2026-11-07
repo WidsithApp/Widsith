@@ -9,7 +9,7 @@ Each version of Widsith, newest first, with the date it was handed out. The addo
 - Screenshot highlights are on unless you turn them off, with chat in the pictures. Both are under Screenshots in the icon's menu.
 - The save reminder comes after 45 minutes of unsaved play, instead of 30.
 - The icon's menu is shorter: Animations, Attach to minimap, Lock position and the sizes sit together under Icon, and Show chat messages is in the options window only.
-- A welcome the first time Widsith runs on an account, and a note of what changed the first time a new version runs.
+- A welcome the first time Widsith runs on an account, and one line the first time a new version runs, pointing at the About page under Options, AddOns, Widsith, which lists what changed.
 - With debug on, /widsith names the recording's folders as the game names them on WoW Forever: a numbered folder in place of the realm, and the character's folder with its surname. It used to point at a folder that doesn't exist.
 - Sending a letter is recorded as one line, the postage and any gold attached together, as the game takes them. A letter with gold used to be recorded as postage of the whole.
 - /widsith check names only what this client should have and hasn't. What a client is known to be without, such as Retail's lack of WoW Forever's rules and stable, is listed apart, as expected, rather than as missing.

@@ -112,6 +112,24 @@ local function createAbout()
     last = label
   end
 
+  -- What changed in this version that a player would notice (Welcome.lua), where
+  -- the one line in chat at the first login on it points.
+  local notes = WJ.whatsNew and WJ.whatsNew()
+  if notes then
+    local head = frame:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    head:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -18)
+    head:SetText("What's new in " .. WJ.VERSION)
+    last = head
+    for _, line in ipairs(notes) do
+      local body = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+      body:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -3)
+      body:SetWidth(WIDTH)
+      body:SetJustifyH("LEFT")
+      body:SetText(line)
+      last = body
+    end
+  end
+
   return frame
 end
 
