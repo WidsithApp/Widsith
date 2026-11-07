@@ -73,6 +73,7 @@ local NOTES = {
   ["0.7.1"] = {
     { "The two played-time lines the game prints when Widsith asks for your played time, at a login or a reload, are no longer hidden", chat = true },
     { "A fault closing the save reminder is answered in chat, like every other click, rather than raised as an error" },
+    { "On WoW Forever the icon shows beside interface addons that fade the game's minimap cluster, such as EllesmereUI" },
   },
   ["0.7.0"] = {
     { "Screenshot highlights, and the include chat in screenshots options are now enabled by default", chat = true },

@@ -356,20 +356,23 @@ local function updateIcon()
   wasRecording = recording
 end
 
--- Where the day/night indicator exists, the icon takes its parent, scale and
--- layer, so it follows the minimap through Edit Mode, times the chosen size.
+-- Where the day/night indicator exists, the icon takes its layer and its size on screen,
+-- times the chosen size, so it follows the minimap through Edit Mode. It stays UIParent's
+-- child: inside the minimap cluster it would go with the cluster when an interface addon
+-- fades or hides it.
 local function diel()
   return MinimapCluster and MinimapCluster.DielFrame
 end
 
 local function matchDiel()
   local d = diel()
+  local scale = 1
   if d then
-    icon:SetParent(d:GetParent())
     icon:SetFrameStrata(d:GetFrameStrata())
     icon:SetFrameLevel(d:GetFrameLevel())
+    scale = d:GetEffectiveScale() / UIParent:GetEffectiveScale()
   end
-  icon:SetScale((d and d:GetScale() or 1) * size())
+  icon:SetScale(scale * size())
   layoutFlame()
 end
 

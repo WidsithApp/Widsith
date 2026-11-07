@@ -29,6 +29,20 @@ test("a login lights the icon and says the version is recording, under the emble
   end
 end)
 
+-- With the day/night dial, the icon takes the dial's layer and its size on screen, but never its
+-- parent: a child of the minimap cluster goes with the cluster when an interface addon fades it.
+test("the icon stays UIParent's child at the dial's layer and size", { client = "forever" }, function(game)
+  game.onBuild = function(G) G.MinimapCluster.scale = 0.8 end
+  game.login()
+  game.advance(8)
+  local icon, dial = game.icon(), game.G.MinimapCluster.DielFrame
+  expect(dial ~= nil, "the stand-in has no dial on this client")
+  expect(icon:GetParent() == game.G.UIParent, "the icon's parent isn't UIParent: " .. tostring(icon:GetParent() and icon:GetParent():GetName()))
+  eq(icon:GetFrameStrata(), dial:GetFrameStrata(), "the icon's strata against the dial's")
+  eq(icon:GetFrameLevel(), dial:GetFrameLevel(), "the icon's level against the dial's")
+  eq(icon:GetEffectiveScale(), dial:GetEffectiveScale(), "the icon's size on screen against the dial's")
+end)
+
 test("the tooltip says what the icon is doing and what a click does", function(game)
   game.login()
   game.advance(8)

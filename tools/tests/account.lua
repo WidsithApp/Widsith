@@ -143,7 +143,7 @@ test("a new version is announced once per account as one message listing what ch
   -- Chat gets what a player may act on or what changes the way things work; the About page
   -- lists everything, the guarded close button included.
   expect(not said[2]:find("save reminder", 1, true), "a change a player can only see is in the message")
-  eq(#game.addon.whatsNew(), 2, "the About page's notes")
+  eq(#game.addon.whatsNew(), 3, "the About page's notes")
   -- The About page lists the notes under a heading with the version.
   local about = game.panelRow("About")
   local texts = {}
