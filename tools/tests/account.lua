@@ -119,9 +119,10 @@ test("a new version is announced once per account as one message listing what ch
   eq(lines[1], "Widsith " .. game.version .. " is installed and recording. What's new:", "the message's first line")
   -- Chat gets what a player may act on or what changes the way things work; the About page
   -- lists everything, the reminder's new length and the menu's shape included.
-  same({ lines[2], lines[3], lines[4], lines[5], lines[6] }, { "  - Screenshot highlights on by default",
+  same({ lines[2], lines[3], lines[4], lines[5] }, { "  - Screenshot highlights on by default",
     "  - Chat shown in the screenshots by default", "  - Settings shared by all your characters",
     "  - A paused character stays paused until you resume it" }, "the message's list")
+  expect(said[1]:sub(-1) == "\n", "the version's news doesn't close with a blank line")
   expect(not said[1]:find("45 minutes", 1, true) and not said[1]:find("under Icon", 1, true), "a change a player can only see is in the message")
   eq(#game.addon.whatsNew(), 6, "the About page's notes")
   -- The About page lists the notes under a heading with the version.
