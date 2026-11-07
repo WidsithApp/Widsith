@@ -43,7 +43,7 @@ end
 local ABOUT = {
   { "What it does", WJ.NAME .. " keeps a record of your character's journey as you play: where you went, what you did and when." },
   { "Saving", "The game writes the recording only when you log out or reload. The icon shrinks the longer you go unsaved; click it to save, which reloads." },
-  { "Settings", "Your settings are shared by all your characters. Pausing is each character's own." },
+  { "Settings", "Your settings are shared by all your characters. Stopping the recording is each character's own." },
   { "Replaying", "Bring the recording to the website, or let the " .. WJ.NAME .. " uploader send it as you play, and watch the journey on the map." },
   { "Chat command", "/widsith, and /widsith help for the rest." },
 }
@@ -168,9 +168,9 @@ local function createPanel()
   layout:AddInitializer(CreateSettingsButtonInitializer("Save the recording", "Save now",
     function() if WJ.saveNow then WJ.saveNow() end end,
     "Reloads the interface, which is the only way the game writes the file: a few seconds of loading screen, then you carry on. Not in combat.", true))
-  layout:AddInitializer(CreateSettingsButtonInitializer("Pause or resume recording", "Pause / Resume",
+  layout:AddInitializer(CreateSettingsButtonInitializer("Stop or start recording", "Stop / Start",
     function() if WJ.togglePause then WJ.togglePause() end end,
-    "Paused, nothing is recorded on this character until you resume.", true))
+    "Stopped, nothing is recorded on this character until you start it again.", true))
 
   Settings.RegisterCanvasLayoutSubcategory(category, createAbout(), "About")
   -- Registering the category is the last step, as the game's own guide has it.

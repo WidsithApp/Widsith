@@ -14,7 +14,7 @@
 --     flame stays full, with animations off nothing moves.
 --   * A left click saves, which is a UI reload (the only way to make the game
 --     write the file); the flame lights again as the interface comes back.
---   * Paused, or not recording at all, the flame is out: grey, on a darkened
+--   * Stopped, or not recording at all, the flame is out: grey, on a darkened
 --     disc.
 --
 -- Nothing reloads unless the player clicks: the icon, the reminder, or
@@ -506,7 +506,7 @@ local function showTooltip(self)
       GameTooltip:AddLine("Recording, " .. duration(WJ.secondsSinceSave()) .. " unsaved.", 1, 1, 1)
     end
   elseif WJ.isPaused() then
-    GameTooltip:AddLine("Paused.", 1, 1, 1)
+    GameTooltip:AddLine("Stopped.", 1, 1, 1)
   else
     GameTooltip:AddLine("Not recording.", 1, 0.3, 0.3)
   end
@@ -584,9 +584,9 @@ local openMenu = WJ.attempt("menu", function(self)
   MenuUtil.CreateContextMenu(self, function(_, root)
     root:CreateTitle(WJ.NAME)
     if WJ.isRecording() then
-      root:CreateButton("Pause recording", WJ.togglePause)
+      root:CreateButton("Stop recording", WJ.togglePause)
     elseif WJ.isPaused() then
-      root:CreateButton("Resume recording", WJ.togglePause)
+      root:CreateButton("Start recording", WJ.togglePause)
     end
     local function checkbox(menu, name, key)
       menu:CreateCheckbox(name,

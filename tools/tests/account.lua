@@ -47,22 +47,22 @@ test("the first character after the upgrade lends its settings to the account, a
   expect(not game.addon.getIconSetting("remind"), "a later character's old setting replaced the account's")
 end)
 
-test("a paused character stays paused through a reload and a login, until resumed", function(game)
+test("a stopped character stays stopped through a reload and a login, until started again", function(game)
   game.login()
   game.advance(8)
-  game.slash("pause")
+  game.slash("stop")
   game.reload()
   game.advance(8)
   expect(not game.addon.isRecording() and game.addon.isPaused(), "a reload started recording on a paused character")
-  expect(game.said("is paused on this character. Resume recording from the icon or with /widsith resume."), "the paused login wasn't said")
+  expect(game.said("is not recording on this character. Start recording from the icon or with /widsith start."), "the stopped login wasn't said")
   game.hover()
-  eq(game.tooltip.lines[2], "Paused.", "the tooltip while paused")
+  eq(game.tooltip.lines[2], "Stopped.", "the tooltip while stopped")
   game.loginAgain()
   game.advance(8)
   expect(not game.addon.isRecording(), "a login started recording on a paused character")
   eq(#game.G.WidsithDB.sessions, 1, "sessions on file while paused")
   game.openMenu()
-  game.press(game.menuEntry("Resume recording"))
+  game.press(game.menuEntry("Start recording"))
   game.advance(8)
   expect(game.addon.isRecording(), "Resume didn't resume")
   game.reload()
@@ -70,10 +70,10 @@ test("a paused character stays paused through a reload and a login, until resume
   expect(game.addon.isRecording(), "a reload after a resume didn't record")
 end)
 
-test("a pause is the character's: another character records", function(game)
+test("a stop is the character's: another character records", function(game)
   game.login()
   game.advance(8)
-  game.slash("pause")
+  game.slash("stop")
   game.loginAs("Maela", game.profile.surname and "Dunwood" or nil)
   game.advance(8)
   expect(game.addon.isRecording(), "a pause on one character paused the next")
@@ -84,13 +84,17 @@ test("the welcome is said once, at the first login on the account", function(gam
   game.advance(4)
   local welcome = game.said("Thank you for installing")
   expect(welcome ~= nil, "no welcome at the first login")
-  expect(welcome and welcome:find("^|TInterface\\AddOns\\Widsith\\media\\emblem:16:16|t Thank you for installing |cff33ff99Widsith|r!\n"),
+  expect(welcome and welcome:find("^|TInterface\\AddOns\\Widsith\\media\\flame%-chat:16:16|t Thank you for installing |cff33ff99Widsith|r!\n"),
     "the welcome doesn't open with the emblem and the thanks: " .. tostring(welcome))
   local lines = {}
-  for line in ((welcome or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
-  same({ lines[2], lines[3], lines[4], lines[5], lines[6] }, { "  - Your gameplay is now being recorded", "  - View it or share it at widsith.app",
-    "  - Automatic uploader available", "", "More details and support in the addon's options menu, and at widsith.app." },
-    "the welcome's list, a blank line, and where to find more")
+  for line in (((welcome or "") .. "\n"):gsub("|T[^|]*|t ?", "")):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+  same({ lines[2], lines[3], lines[4], lines[5], lines[6], lines[7], lines[8], lines[9] }, { "",
+    "  - Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app",
+    "  - It is saved whenever you log off or reload the interface. Click the icon by the minimap to save at any time",
+    "  - The addon's options menu, under Options, AddOns, Widsith, has more details and support information",
+    "", "  - A lightweight companion app from widsith.app uploads your progress for you whenever you save", "", "More details at widsith.app" },
+    "the welcome's lines")
+  expect(welcome and welcome:find("Click the |TInterface\\AddOns\\Widsith\\media\\flame%-chat:16:16|t icon by the minimap"), "the save line doesn't draw the icon it names")
   expect(welcome and welcome:sub(-1) == "\n", "the welcome doesn't close with a blank line")
   local messages = 0
   for _, line in ipairs(game.chat) do if line:find("Thank you for installing", 1, true) or line:find("Your gameplay is now", 1, true) then messages = messages + 1 end end
@@ -116,13 +120,14 @@ test("a new version is announced once per account as one message listing what ch
   eq(#said, 1, "chat messages at the login: one, the version's news in the recording line's place")
   local lines = {}
   for line in ((said[1] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
-  eq(lines[1], "Widsith " .. game.version .. " is installed and recording.", "the message's first line")
-  eq(lines[2], "What's new:", "the message's second line")
+  eq(lines[1], "Widsith " .. game.version .. " is installed.", "the message's first line")
+  same({ lines[2], lines[3], lines[4] }, { "", "What's new:", "" }, "the heading of the list, a blank line either side")
   -- Chat gets what a player may act on or what changes the way things work; the About page
   -- lists everything, the reminder's new length and the menu's shape included.
-  same({ lines[3], lines[4], lines[5], lines[6] }, { "  - Screenshot highlights on by default",
-    "  - Chat shown in the screenshots by default", "  - Settings shared by all your characters",
-    "  - A paused character stays paused until you resume it" }, "the message's list")
+  same({ lines[5], lines[6], lines[7], lines[8] }, { "  - Screenshot highlights and chat in the screenshots are now on by default",
+    "  - Changes to your Widsith settings are now shared across all your characters",
+    "  - Pause and Resume are now Stop and Start, which is what they do: a stopped recording records nothing",
+    "  - A character whose recording you stopped stays stopped until you start it again" }, "the message's list")
   expect(said[1]:sub(-1) == "\n", "the version's news doesn't close with a blank line")
   expect(not said[1]:find("45 minutes", 1, true) and not said[1]:find("under Icon", 1, true), "a change a player can only see is in the message")
   eq(#game.addon.whatsNew(), 6, "the About page's notes")
@@ -132,7 +137,8 @@ test("a new version is announced once per account as one message listing what ch
   for _, r in ipairs(about.frame.regions) do texts[#texts + 1] = r.text end
   local joined = table.concat(texts, "\n")
   expect(joined:find("What's new in " .. game.version, 1, true), "the About page has no What's new heading")
-  expect(joined:find("Screenshot highlights on by default", 1, true), "the About page doesn't list the notes")
+  expect(joined:find("Screenshot highlights and chat in the screenshots are now on by default", 1, true), "the About page doesn't list the notes")
+  expect(joined:find("The save reminder comes after 45 minutes", 1, true), "the About page leaves out a note chat doesn't carry")
   game.clearChat()
   game.loginAs("Maela", game.profile.surname and "Dunwood" or nil)
   game.advance(4)
@@ -148,7 +154,7 @@ test("a new version installed mid-session is announced at the reload, not the ne
   game.G.WidsithAccount.seenVersion = "0.6.3"
   game.reload()
   game.advance(4)
-  expect(game.said(game.version .. " is installed and recording."), "a reload on a version not yet seen said nothing")
+  expect(game.said(game.version .. " is installed."), "a reload on a version not yet seen said nothing")
   expect(not game.said("is recording."), "the reload line was said beside the version note, which says it itself")
   game.clearChat()
   game.reload()
@@ -161,7 +167,7 @@ test("a player who used the addon before this version is told the version, not w
   game.login()
   game.advance(4)
   expect(not game.said("Thank you for installing"), "an existing player was welcomed as new")
-  expect(game.said(game.version .. " is installed and recording."), "an existing player wasn't told the version")
+  expect(game.said(game.version .. " is installed."), "an existing player wasn't told the version")
 end)
 
 test("with Show chat messages off, nothing is said at login, the welcome included", function(game)

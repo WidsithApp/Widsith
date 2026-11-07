@@ -18,11 +18,14 @@ local NAME = "|cff33ff99" .. WJ.NAME .. "|r"
 
 local WELCOME = {
   "Thank you for installing " .. NAME .. "!",
-  "  - Your gameplay is now being recorded",
-  "  - View it or share it at widsith.app",
-  "  - Automatic uploader available",
   "",
-  "More details and support in the addon's options menu, and at widsith.app.",
+  "  - Your gameplay is now being recorded. View it or share it by uploading the file at widsith.app",
+  "  - It is saved whenever you log off or reload the interface. Click the " .. WJ.EMBLEM .. " icon by the minimap to save at any time",
+  "  - The addon's options menu, under Options, AddOns, Widsith, has more details and support information",
+  "",
+  "  - A lightweight companion app from widsith.app uploads your progress for you whenever you save",
+  "",
+  "More details at widsith.app",
 }
 
 -- What changed that a player would notice, by version, a few words each. The
@@ -32,12 +35,12 @@ local WELCOME = {
 -- version with no entry is announced alone.
 local NOTES = {
   ["0.7.0"] = {
-    { "Screenshot highlights on by default", chat = true },
-    { "Chat shown in the screenshots by default", chat = true },
-    { "Settings shared by all your characters", chat = true },
-    { "A paused character stays paused until you resume it", chat = true },
-    { "The save reminder at 45 minutes" },
-    { "The icon's settings under Icon in the menu" },
+    { "Screenshot highlights and chat in the screenshots are now on by default", chat = true },
+    { "Changes to your Widsith settings are now shared across all your characters", chat = true },
+    { "Pause and Resume are now Stop and Start, which is what they do: a stopped recording records nothing", chat = true },
+    { "A character whose recording you stopped stays stopped until you start it again", chat = true },
+    { "The save reminder comes after 45 minutes of unsaved play" },
+    { "The icon's settings are under Icon in the menu, and Show chat messages is in the options window" },
   },
 }
 
@@ -63,9 +66,12 @@ function WJ.tellNews()
   if account.seenVersion == nil and not account.usedBefore then
     WJ.say(WJ.EMBLEM .. " " .. table.concat(WELCOME, "\n") .. "\n", true)
   else
-    local recording = WJ.isRecording() and " and recording" or ""
-    local lines = { version .. " is installed" .. recording .. "." }
-    if NOTES[version] then lines[#lines + 1] = "What's new:" end
+    local lines = { version .. " is installed." }
+    if NOTES[version] then
+      lines[#lines + 1] = ""
+      lines[#lines + 1] = "What's new:"
+      lines[#lines + 1] = ""
+    end
     for _, note in ipairs(NOTES[version] or {}) do
       if note.chat then lines[#lines + 1] = "  - " .. note[1] end
     end

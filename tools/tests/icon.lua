@@ -13,7 +13,7 @@ test("a login lights the icon and says the version is recording, under the emble
   expect(game.addon.isRecording(), "not recording after login")
   local line = game.said(game.version .. " is recording. Type /widsith help for commands.")
   expect(line ~= nil, "the login line wasn't said")
-  expect(line and line:find("^|TInterface\\AddOns\\Widsith\\media\\emblem:16:16|t |cff33ff99Widsith|r " .. game.version:gsub("%.", "%%.") .. " is recording"),
+  expect(line and line:find("^|TInterface\\AddOns\\Widsith\\media\\flame%-chat:16:16|t |cff33ff99Widsith|r " .. game.version:gsub("%.", "%%.") .. " is recording"),
     "the login line doesn't open with the emblem and the name: " .. tostring(line))
   -- The icon's disc is the addon's own; the ring is the game's: the dial's atlas on a client with
   -- the dial, the classic tracking border without it.
@@ -78,9 +78,9 @@ test("the unsaved time runs from the last reload, through a pause", function(gam
   game.login()
   game.advance(100)
   local before = game.addon.secondsSinceSave()
-  game.slash("pause")
+  game.slash("stop")
   game.advance(50)
-  game.slash("resume")
+  game.slash("start")
   game.advance(8)
   expect(game.addon.secondsSinceSave() >= before + 58, "the unsaved time reset at a pause or resume")
   game.clickSave()
@@ -127,12 +127,12 @@ test("the menu lists every setting with its default", function(game)
   game.advance(8)
   local menu = game.openMenu()
   expect(menu.entries[1].kind == "title" and menu.entries[1].name == "Widsith", "the menu doesn't open with the addon's name")
-  eq(game.menuEntry("Pause recording") ~= nil, true, "Pause recording while recording")
+  eq(game.menuEntry("Stop recording") ~= nil, true, "Stop recording while recording")
   -- The top level, in order: what the player reaches for. The icon's own settings under Icon,
   -- the sizes under a line in it; Show chat messages is the panel's alone.
   local names = {}
   for _, entry in ipairs(menu.entries) do names[#names + 1] = entry.kind .. ":" .. entry.name end
-  same(names, { "title:Widsith", "button:Pause recording", "checkbox:Remind me to save", "checkbox:Emote when saving",
+  same(names, { "title:Widsith", "button:Stop recording", "checkbox:Remind me to save", "checkbox:Emote when saving",
     "button:Screenshots", "button:Icon", "button:Hide icon" }, "the menu's top level")
   local iconNames = {}
   for _, entry in ipairs(game.menuEntry("Icon").entries) do iconNames[#iconNames + 1] = entry.kind .. ":" .. entry.name end
@@ -154,13 +154,13 @@ test("pausing from the menu closes the session and the menu then offers Resume",
   game.login()
   game.advance(8)
   game.openMenu()
-  game.press(game.menuEntry("Pause recording"))
+  game.press(game.menuEntry("Stop recording"))
   expect(not game.addon.isRecording(), "still recording after Pause")
-  expect(game.said("recording paused on this character until you resume it"), "the pause wasn't said")
+  expect(game.said("recording stopped on this character until you start it again"), "the stop wasn't said")
   eq(game.last("END").fields[2], "pause", "the END line's reason")
   game.openMenu()
-  expect(game.menuEntry("Pause recording") == nil and game.menuEntry("Resume recording") ~= nil, "the menu doesn't offer Resume while paused")
-  game.press(game.menuEntry("Resume recording"))
+  expect(game.menuEntry("Stop recording") == nil and game.menuEntry("Start recording") ~= nil, "the menu doesn't offer Resume while paused")
+  game.press(game.menuEntry("Start recording"))
   expect(game.addon.isRecording(), "not recording after Resume")
   game.advance(8)
   eq(#game.written, 2, "sessions after a pause and a resume")
@@ -193,7 +193,7 @@ test("the settings panel has every setting, and Defaults puts them back", functi
   same(names, { "header:The icon", "checkbox:Show the icon", "checkbox:Remind me to save", "checkbox:Animations",
     "checkbox:Attach to minimap", "checkbox:Lock position", "checkbox:Show chat messages", "checkbox:Emote when saving",
     "dropdown:Icon size", "header:The recording", "checkbox:Screenshot highlights", "checkbox:Show chat in the pictures",
-    "button:Save the recording", "button:Pause or resume recording", "canvas:About" }, "the panel's rows")
+    "button:Save the recording", "button:Stop or start recording", "canvas:About" }, "the panel's rows")
   local chat = game.panelRow("Show chat in the pictures")
   expect(chat and chat.parent == game.panelRow("Screenshot highlights"), "the chat row doesn't depend on the highlights row")
   expect(chat and chat.enabledWhen() == true, "the chat row isn't enabled while highlights are on, as they are by default")
@@ -209,9 +209,9 @@ test("the settings panel has every setting, and Defaults puts them back", functi
   expect(game.addon.getIconSetting("remind"), "Defaults turned reminders off")
   eq(game.addon.getIconSetting("iconSize"), 1, "Defaults' icon size")
   -- The panel's buttons do what the icon does.
-  game.panelRow("Pause or resume recording").press()
+  game.panelRow("Stop or start recording").press()
   expect(not game.addon.isRecording(), "the panel's Pause didn't pause")
-  game.panelRow("Pause or resume recording").press()
+  game.panelRow("Stop or start recording").press()
   expect(game.addon.isRecording(), "the panel's Resume didn't resume")
   game.panelRow("Save the recording").press()
   expect(game.reloadAsked, "the panel's Save now didn't ask for a reload")

@@ -169,10 +169,10 @@ function WJ.say(text, bare)
   if answering or settings == nil or settings.chat ~= false then print(bare and text or (PREFIX .. text)) end
 end
 
--- News of what the addon is doing as a load begins (recording, paused, a
--- welcome), headed by the addon's emblem drawn in the line at the chat font's
--- height and the name, rather than the plain prefix.
-WJ.EMBLEM = "|TInterface\\AddOns\\" .. ADDON_NAME .. "\\media\\emblem:16:16|t"
+-- News of what the addon is doing as a load begins (recording, stopped, a
+-- welcome), headed by the flame drawn in the line at the chat font's height
+-- and the name, rather than the plain prefix.
+WJ.EMBLEM = "|TInterface\\AddOns\\" .. ADDON_NAME .. "\\media\\flame-chat:16:16|t"
 function WJ.announce(text)
   WJ.say(WJ.EMBLEM .. " " .. PREFIX .. text, true)
 end
@@ -193,7 +193,7 @@ end
 
 -- ok, message. Position.lua publishes tickClock / tickHasPos / lastPosHasWorld.
 function WJ.health()
-  if paused then return true, "recording is paused. Resume it from the icon or with /widsith resume." end
+  if paused then return true, "recording is stopped. Start it from the icon or with /widsith start." end
   if not session then return false, "no session was started, so nothing is being recorded." end
   if WJ.savesNotLoaded then
     return false, "the game didn't load the earlier recording, so this reload replaced it in the file."
@@ -302,7 +302,7 @@ function WJ.startSession(isLogin, isReload, isResume)
   WJ.startTicker()
 
   if isResume then
-    WJ.say("recording resumed.")
+    WJ.say("recording started.")
   else
     -- The previous session can only be here if it made the round trip through
     -- the SavedVariables file, so it shows that saving works (in debug mode).
@@ -345,17 +345,21 @@ function WJ.endSession(reason)
   session = nil
 end
 
--- Pause: close this session with END … pause and record nothing until
--- Resume, which opens a new session with a fresh baseline. The pause is the
--- character's and is kept with the character's file, so a login or a reload
--- finds it still paused: a player who paused said what they wanted, and the
--- only other way to be sure nothing is recorded would be to disable the addon.
+-- Stop: close this session with END … pause and record nothing until
+-- Start, which opens a new session with a fresh baseline. The player's words
+-- are stop and start, since nothing in between is recorded or can be caught
+-- up, where a pause would promise the opposite (and the uploader's pause only
+-- delays). The line's reason and the names here keep the older word, which
+-- the site reads. The stop is the character's and is kept with the
+-- character's file, so a login or a reload finds it still stopped: a player
+-- who stopped said what they wanted, and the only other way to be sure
+-- nothing is recorded would be to disable the addon.
 function WJ.pause()
   if not session then return end
   WJ.endSession("pause")
   paused = true
   WidsithUI.paused = true
-  WJ.say("recording paused on this character until you resume it, from the icon or with /widsith resume.")
+  WJ.say("recording stopped on this character until you start it again, from the icon or with /widsith start.")
 end
 
 function WJ.resume()
@@ -365,12 +369,12 @@ function WJ.resume()
   if WJ.onResume then WJ.guard("resume", WJ.onResume)() end
 end
 
--- A login or a reload on a character that was left paused: nothing starts, and
--- the player is told once, since the icon shows it out as well.
+-- A login or a reload on a character whose recording was stopped: nothing
+-- starts, and the player is told once, since the icon shows it out as well.
 local function stayPaused()
   paused = true
   if WJ.tellNews then WJ.guard("welcome", WJ.tellNews)() end
-  WJ.announce("is paused on this character. Resume recording from the icon or with /widsith resume.")
+  WJ.announce("is not recording on this character. Start recording from the icon or with /widsith start.")
   if WJ.onRecordingStarted then WJ.guard("recordingStarted", WJ.onRecordingStarted)() end
 end
 
@@ -787,7 +791,7 @@ local function printStatus()
       count((session.lines or 0) + #buffer, "line", "lines"), count(counts.kills, "kill", "kills"),
       count(counts.quests, "quest", "quests"), onFile))
   elseif paused then
-    print(format("%s%s is paused; resume it from the icon or with /widsith resume. %s", PREFIX, WJ.VERSION, onFile))
+    print(format("%s%s is stopped; start recording from the icon or with /widsith start. %s", PREFIX, WJ.VERSION, onFile))
   else
     print(format("%s%s isn't recording. %s", PREFIX, WJ.VERSION, onFile))
   end
@@ -805,8 +809,8 @@ local HELP = {
   { "help", "shows this list." },
   { "about", "says what " .. WJ.NAME .. " is." },
   { "size", "says how big the recording is, and which sessions are the largest." },
-  { "pause", "stops recording on this character until you resume." },
-  { "resume", "starts recording again." },
+  { "stop", "stops recording on this character until you start it again." },
+  { "start", "starts recording again." },
   { "save", "reloads the interface, which writes the recording to disk." },
   { "icon", "shows or hides the recording icon." },
   { "options", "opens the settings panel." },
@@ -880,15 +884,15 @@ local function handleCommand(msg)
     if WJ.setIconShown then WJ.setIconShown(not WJ.iconShown()) end
   elseif cmd == "options" then
     if WJ.openOptions then WJ.openOptions() else print(PREFIX .. "this game client has no settings panel for addons.") end
-  elseif cmd == "pause" then
+  elseif cmd == "stop" then
     if session then
       WJ.pause()
     elseif paused then
-      print(PREFIX .. "recording is already paused.")
+      print(PREFIX .. "recording is already stopped.")
     else
-      print(PREFIX .. "isn't recording, so there is nothing to pause.")
+      print(PREFIX .. "isn't recording, so there is nothing to stop.")
     end
-  elseif cmd == "resume" then
+  elseif cmd == "start" then
     if session then
       print(PREFIX .. "is already recording.")
     else

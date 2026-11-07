@@ -41,7 +41,7 @@ Each version is also on this repository's Releases page as a zip, built from its
 - `/widsith help` lists the commands.
 - `/widsith about` gives the version, what Widsith is, and the website.
 - `/widsith size` says how big the recording is and which sessions are the largest.
-- `/widsith pause` stops recording on this character until `/widsith resume`, through reloads and logins.
+- `/widsith stop` stops recording on this character until `/widsith start`, through reloads and logins. Nothing in between is recorded.
 - `/widsith save` reloads the interface so the game writes the saved file.
 - `/widsith icon` shows or hides the recording icon.
 - `/widsith options` opens the settings, also found under Options, AddOns, Widsith.
@@ -52,7 +52,7 @@ Each version is also on this repository's Releases page as a zip, built from its
 
 The game writes an addon's saved file only when you log out or reload the interface, so play since the last save is lost if the game closes unexpectedly. The icon by the minimap shows how much play is unsaved. Its flame is lit while Widsith records and grows shorter over 45 minutes of unsaved play. After that the ring around it glows, and Widsith offers to save once you are resting and out of combat.
 
-A left click on the icon saves by reloading the interface. A right click opens a menu to pause or resume, turn the reminder or the emote when saving on and off, set the screenshot settings, change the icon's animations, attachment, lock and size under Icon, or hide it. While recording is paused, the icon is dark. The settings panel holds the same switches and the chat messages switch, so a hidden icon can always be brought back. Your settings are shared by all your characters; pausing is each character's own.
+A left click on the icon saves by reloading the interface. A right click opens a menu to stop or start recording, turn the reminder or the emote when saving on and off, set the screenshot settings, change the icon's animations, attachment, lock and size under Icon, or hide it. While recording is stopped, the icon is dark. The settings panel holds the same switches and the chat messages switch, so a hidden icon can always be brought back. Your settings are shared by all your characters; stopping is each character's own.
 
 ## Screenshots
 
@@ -69,7 +69,7 @@ With "Screenshot highlights" turned on, Widsith takes a screenshot when you reac
 - `Screenshots.lua` notes every screenshot, and takes the addon's own at the highlights.
 - `Save.lua` draws the recording icon and offers the save reminder.
 - `Options.lua` is the settings panel and its About page.
-- `media/` holds the icon's images: the flame, the disc under it, the glow, and the emblem shown in the addon list. They are drawn by the scripts in `tools/`. Everything else on screen is the game's own art, loaded from the game.
+- `media/` holds the icon's images: the flame, the disc under it, the glow, the emblem shown in the addon list, and the flame alone for the chat lines that open with it. They are drawn by the scripts in `tools/`. Everything else on screen is the game's own art, loaded from the game.
 - `LICENSE.txt` is the licence.
 
 ## Tools and the check

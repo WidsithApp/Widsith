@@ -5,7 +5,7 @@ Each version of Widsith, newest first, with the date it was handed out. The addo
 ## 0.7.0 · not yet handed out
 
 - Your settings are shared by all your characters. The first character you log in on after installing this version lends its settings to the account; what other characters had set is not kept.
-- A paused character stays paused across reloads and logins until you resume it, from the icon or with /widsith resume.
+- Pause and Resume are now Stop and Start, which is what they do: a stopped recording records nothing, and nothing in between can be caught up. A character whose recording you stopped stays stopped across reloads and logins until you start it again, from the icon or with /widsith start.
 - Screenshot highlights are on unless you turn them off, with chat in the pictures. Both are under Screenshots in the icon's menu.
 - The save reminder comes after 45 minutes of unsaved play, instead of 30.
 - The icon's menu is shorter: Animations, Attach to minimap, Lock position and the sizes sit together under Icon, and Show chat messages is in the options window only.
