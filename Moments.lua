@@ -1,19 +1,11 @@
 -- Widsith — Moments
 --
--- What happens to the character between the lines the other files write:
--- what a fight cost once it is over, what ended a life, buffs coming and
--- going, control lost, breath running out, a place discovered, the game's own counters
--- ticking over, and what nearby creatures say.
---
--- Two rules shape this file. Each line is something the game itself reported
--- at that moment; nothing here is worked out from other readings. And a fight
--- is written as one summary when it ends, never blow by blow: a replay plays
--- hours in minutes, where a fight is a blink, and while the character is in
--- combat the game hides these numbers from addons anyway (12.0's secret
--- values), releasing them once combat ends.
---
--- Checked on WoW Forever 1.60.1. Every API here is looked up before use, so a
--- client without one simply writes nothing for that family.
+-- What happens to the character between the lines the other files write: what
+-- a fight cost, what ended a life, buffs coming and going, control lost, breath
+-- running out, a place discovered, the game's own counters ticking over, and
+-- what nearby creatures say. Each line is something the game reported at that
+-- moment, and a fight is one summary written when it ends. Every API is looked
+-- up before use, so a client without one writes nothing for that family.
 
 local _, WJ = ...
 
@@ -44,30 +36,16 @@ end
 ---------------------------------------------------------------------------
 -- FIGHT: one line per fight, from the game's built-in damage meter.
 --
--- C_DamageMeter (DamageMeterDocumentation.lua) keeps a session for every
--- fight whether or not its window is shown: how long it lasted, what each
--- combatant dealt, took and healed, spell by spell. During the fight every
--- amount in it is secret; the game releases them as combat ends. So the line
--- is written at that instant, for the fight that has just ended, which also
--- gives a fight followed at once by another its own line.
---
--- If anything the line needs is still hidden or not there yet at that
--- instant, the meter is read again a second later, as long as no new fight
--- has begun by then (its numbers would be hidden again, and the newest
--- session would no longer be the one that ended).
---
--- The meter carries one session on through a short lull: a fight that begins
--- within a moment of the last one ending is, to the meter, the same session,
--- its duration and totals growing. Such a session is written again at the end
--- of each span of combat it grew through, so the last line for a meter ID is
--- the whole fight and the earlier ones are its stages; the same reading is
--- never written twice.
---
--- Only this character's own entry is read, plus the fight's totals and the
--- creatures fought. Other players' entries are left alone.
+-- C_DamageMeter (DamageMeterDocumentation.lua) keeps a session for every fight,
+-- shown or not. Every amount in it is secret in combat and released as combat
+-- ends, so the line is written then; anything still missing is read again a
+-- second later, unless a new fight has begun. The meter carries one session
+-- through a short lull, so a session that grows is written again at the end of
+-- each stretch of combat, and the last line for its ID is the whole fight.
+-- Only this character's own entry, the totals and the creatures fought are read.
 ---------------------------------------------------------------------------
 
-local FIGHT_SETTLE = 1   -- s after combat ends before the meter is read again, if it wasn't whole at once
+local FIGHT_SETTLE = 1   -- s after combat ends before the meter is read again
 
 local meterTypes = Enum and Enum.DamageMeterType or {}
 local DONE    = meterTypes.DamageDone or 0
@@ -75,9 +53,8 @@ local TAKEN   = meterTypes.DamageTaken or 7
 local HEALED  = meterTypes.HealingDone or 2
 local ENEMIES = meterTypes.EnemyDamageTaken or 10
 
--- The last line written: the meter's session ID, the duration it reported then and
--- its totals (for the fight already on the meter when the session began, as the
--- meter showed it then; see seedMoments).
+-- The last fight written, or the one standing at session start (seedMoments):
+-- its meter ID, duration and totals.
 local lastFight
 
 local function haveMeter()
@@ -92,8 +69,7 @@ local function newestFight()
   return newest and plain(newest.sessionID)
 end
 
--- This character's entry among a session's combatants, and whether the game
--- hid any entry it had to look at to find it.
+-- This character's entry among a session's combatants, and whether any was hidden.
 local function ownEntry(session)
   if not session then return nil, false end
   local sources = session.combatSources
@@ -116,8 +92,7 @@ local function ownEntry(session)
   return nil, hidden
 end
 
--- "id:amount,id:amount" from a list of the meter's entries, and whether the
--- game hid any part of it.
+-- "id:amount,id:amount" from the meter's entries, and whether any part was hidden.
 local function amounts(entries, idKey)
   local out, hidden = {}, false
   for i = 1, #entries do
@@ -136,9 +111,8 @@ local function amounts(entries, idKey)
   return table.concat(out, ","), hidden
 end
 
--- The spells behind one of this character's totals, and whether the game hid
--- any of them. The meter answers by the combatant's GUID, which it refuses
--- from an addon while that GUID is secret.
+-- The spells behind one of this character's totals, and whether any were hidden.
+-- The meter answers by the combatant's GUID, refused while that GUID is secret.
 local function spellAmounts(fightID, meterType, entry)
   if not entry then return nil, false end
   if secret(entry.sourceGUID) then return nil, true end
@@ -150,9 +124,8 @@ local function spellAmounts(fightID, meterType, entry)
   return amounts(spells, "spellID")
 end
 
--- The FIGHT line's fields for one of the meter's sessions, and whether the
--- line is whole: nothing in it hidden, and both this character's own damage
--- and the creatures fought already there.
+-- The FIGHT line's fields for one session, and whether the line is whole:
+-- nothing hidden, and this character's damage and the creatures fought there.
 local function readFight(id)
   local hidden = false
   local function note(isHidden) if isHidden then hidden = true end end
@@ -173,8 +146,7 @@ local function readFight(id)
   local mended, mendedHidden = ownEntry(healed)
   note(dealtHidden) note(hurtHidden) note(mendedHidden)
 
-  -- A creature is named; an opponent who is a player (a duel, PvP) is not: their
-  -- entry has no creature ID, and stays an amount with no name.
+  -- A player opponent (a duel, PvP) has no creature ID and stays unnamed.
   local foes = enemies and open(enemies.combatSources)
   local names, foeAmounts = {}, nil
   if foes then
@@ -199,17 +171,15 @@ local function readFight(id)
   return fields, whole
 end
 
--- The newest session's line, if this reading of it hasn't been written: a new
--- session, or one already written whose duration has grown since. atOnce:
--- only a whole line; a second later, whatever the meter will show.
--- What a line's fields say of how far the fight had got: its duration, when plain,
--- and its totals, as later readings are held against.
+-- How far a line's fight had got: its duration, when plain, and its totals.
 local function standing(f)
   local duration = f[2]
   if secret(duration) or type(duration) ~= "number" then duration = nil end
   return duration, field(f[3]) .. "/" .. field(f[4]) .. "/" .. field(f[6])
 end
 
+-- The newest session's line, unless this reading of it was written already.
+-- atOnce: only a whole line; a second later, whatever the meter shows.
 local function writeFight(atOnce)
   local id = newestFight()
   if id == nil then return end
@@ -217,9 +187,8 @@ local function writeFight(atOnce)
   if atOnce and not whole then return end
   local duration, totals = standing(f)
   if lastFight and lastFight.id == id then
-    -- Written before: again only if it has grown. The meter's clock alone
-    -- runs on for a moment after combat, so a second later the duration must
-    -- not be the whole of the difference: the totals have to have moved too.
+    -- Written before: again only if it has grown. The meter's clock runs on a
+    -- moment after combat, so a second later the totals must have moved too.
     if duration == nil or lastFight.duration == nil or duration <= lastFight.duration then return end
     if not atOnce and totals == lastFight.totals then return end
   end
@@ -228,14 +197,10 @@ local function writeFight(atOnce)
   return true
 end
 
--- Whether the fight that just ended still needs its line: the read at the
--- instant didn't write one. The meter's clock runs on for a moment after
--- combat ends, so a line written at the instant must not be written again a
--- second later with a duration one second longer.
+-- Whether the fight that just ended still needs its line from the later read.
 local settleNeeded = false
 
--- A second after combat ends, if no new fight has begun: the fight's line if
--- it couldn't be written at once, and what the fight did to auras and counters.
+-- A second after combat ends, unless a new fight has begun: an owed line, auras, counters.
 local function afterFight()
   if InCombatLockdown() then return end
   if haveMeter() and settleNeeded then writeFight(false) end
@@ -244,9 +209,7 @@ local function afterFight()
   if WJ.readTallies then WJ.readTallies(false) end
 end
 
--- Called when the game's combat flag drops (Events.lua). The read at that
--- instant is an attempt: if the meter isn't ready, or the call fails, the
--- read a second later writes the line (and names any fault that persists).
+-- Called when combat ends (Events.lua); the read a second later covers a failed one.
 function WJ.onCombatEnd()
   local ok, written = false, false
   if haveMeter() then ok, written = pcall(writeFight, true) end
@@ -255,17 +218,12 @@ function WJ.onCombatEnd()
 end
 
 ---------------------------------------------------------------------------
--- RECAP: the hits that ended a life, as the game's own death recap lists
--- them (C_DeathRecap, what the "Recap" button on the release dialog shows):
--- newest first, each with what it was, how much, the overkill, the health
--- the character had before it, and who dealt it, by GUID and by the name the
--- recap gives, a creature's or another player's alike. One line per hit,
--- written with the DEATH.
+-- RECAP: the hits that ended a life, newest first, one line each, written with
+-- the DEATH, from C_DeathRecap (the release dialog's Recap button).
 --
--- The recap is announced in the system channel as a link, "[You died.]",
--- carrying its ID, just before PLAYER_DEAD. That ID asks for exactly this
--- death's recap. Without it the latest recap is taken only if its newest hit
--- is from the last few seconds: the recap of an earlier death stays around.
+-- The system channel announces the recap just before PLAYER_DEAD as a
+-- "[You died.]" link carrying its ID. Without that ID the latest recap is taken
+-- only if its newest hit is recent, since an earlier death's recap stays around.
 ---------------------------------------------------------------------------
 
 local RECAP_LINK_WINDOW = 5    -- s between the chat link and PLAYER_DEAD
@@ -306,31 +264,16 @@ end
 ---------------------------------------------------------------------------
 -- AURA: a buff or debuff arriving on the character, and leaving it.
 --
--- UNIT_AURA says which auras were added and which instances were removed.
--- Under combat restrictions both lists are secret, so `gain` and `lose`
--- cover the time outside fights: food and drink, buffs from other players,
--- the ghost form, what is cast before a pull.
+-- UNIT_AURA's lists are secret under combat restrictions, so `gain` and `lose`
+-- cover the time outside fights. After a fight, when a session opens and when
+-- the game resends the whole set, what is on the character is compared with
+-- what was known: `has` for an aura never announced, `gone` for one no longer
+-- there, each true as written rather than when the aura began or ended.
 --
--- What a fight did to the set is read when it is over, as a comparison with
--- what was known: `has` for an aura found on the character that was never
--- announced (the poison a creature left), `gone` for one no longer there.
--- Both say what is true as they are written, not when it began or ended.
--- The same comparison is made when a session opens and whenever the game
--- resends the whole set (after a death, a loading screen), which also gives
--- every aura a new instance number.
---
--- Addon code may not look at an aura the game hides. While combat,
--- encounter, challenge-mode or PvP-match restrictions are on, every aura is
--- hidden, and a few spells are hidden always. Asked for one then, the game
--- doesn't hand back a hidden value: the call raises an error ("Auras cannot
--- be accessed when secret while tainted"; the RequiresUnitAuraAccess
--- precondition in UnitAuraDocumentation.lua). So every read below first asks
--- C_Secrets whether the answer would be hidden, then goes through auraCall,
--- which makes the call inside pcall in case it is refused anyway. A
--- refused read is the game's rule, not a fault: that pass writes nothing and
--- reports nothing. A session that opens in combat therefore has no opening
--- `has` lines; they come with the comparison a second after the fight ends,
--- where everything on the character is new to the session.
+-- Under combat, encounter, challenge-mode or PvP-match restrictions, and for a
+-- few spells always, reading an aura raises an error rather than returning a
+-- secret (RequiresUnitAuraAccess in UnitAuraDocumentation.lua). So each read
+-- asks C_Secrets first and goes through pcall; a refused read writes nothing.
 ---------------------------------------------------------------------------
 
 local AURA_FILTERS = { "HELPFUL", "HARMFUL" }
@@ -353,8 +296,7 @@ local function aurasHidden()
   return hidden == true
 end
 
--- One C_UnitAuras call that can never raise. Returns its first answer, or
--- nil and true when the game refused it.
+-- One C_UnitAuras call that never raises: its answer, or nil and true when refused.
 local function auraCall(name, ...)
   local call = C_UnitAuras and C_UnitAuras[name]
   if type(call) ~= "function" then return nil, false end
@@ -363,10 +305,8 @@ local function auraCall(name, ...)
   return answer, false
 end
 
--- Another player's name from their GUID, as the game knows it: "Name", or
--- "Name-Realm" for one from another realm, the form a group member is
--- written in. Nothing for a creature, and nothing when the game can't say:
--- GetPlayerInfoByGUID may answer nothing for a player it hasn't met.
+-- Another player's name from their GUID, "Name" or "Name-Realm"; nothing for a
+-- creature, or for a player GetPlayerInfoByGUID hasn't met.
 local function playerName(guid)
   if type(GetPlayerInfoByGUID) ~= "function" or not guid:find("^Player%-") then return nil end
   local ok, _, _, _, _, _, name, realm = pcall(GetPlayerInfoByGUID, guid)
@@ -377,9 +317,8 @@ local function playerName(guid)
   return name
 end
 
--- Who cast it: nothing for the character's own; otherwise the caster's GUID
--- in full, a creature's, a pet's or another player's alike, and for a player
--- their name as well, when the game can give it.
+-- Who cast it: nothing for the character's own, else the caster's GUID and,
+-- for a player, their name.
 local function auraCaster(aura, own)
   if own then return nil end
   local instance = plain(aura.auraInstanceID)
@@ -399,9 +338,8 @@ local function writeAura(how, aura)
     aura.name, auraCaster(aura, own))
 end
 
--- Every aura on the character the game lets addons see, or nil while it
--- hides them (or refuses partway, when nothing from that pass is used). An
--- aura whose spell is always hidden is left out and the rest are read.
+-- Every aura on the character addons may see, or nil while they are hidden or
+-- a read is refused. An aura whose spell is always hidden is skipped.
 local function aurasPresent()
   if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) or aurasHidden() then return nil end
   local list = {}
@@ -475,10 +413,8 @@ end
 WJ.unitEvents.UNIT_AURA = "player"
 
 ---------------------------------------------------------------------------
--- CC: the character losing control: stunned, rooted, feared, silenced. What
--- the game's own loss-of-control alert shows, which it doesn't hide for one's
--- own character even in combat: the kind, the spell, and how long it lasts.
--- The event fires for other units in sight as well; only the player's is kept.
+-- CC: losing control, from the game's loss-of-control alert, which isn't hidden
+-- for one's own character in combat. Other units' events are ignored.
 ---------------------------------------------------------------------------
 
 handlers.LOSS_OF_CONTROL_ADDED = function(unit, index)
@@ -490,11 +426,8 @@ handlers.LOSS_OF_CONTROL_ADDED = function(unit, index)
 end
 
 ---------------------------------------------------------------------------
--- MIRROR: the timer bars under the portrait: breath underwater, fatigue in
--- deep water. The game starts the bar when it begins to drain, starts it
--- again with a positive rate when it begins to refill, and stops it when it
--- is full. On death it sends a stop for every kind of bar whether one was
--- showing or not, so a stop is written only for a bar that was started.
+-- MIRROR: the breath and fatigue bars under the portrait. On death the game
+-- stops every kind of bar, so a stop is written only for a bar that was started.
 ---------------------------------------------------------------------------
 
 local barsRunning = {}
@@ -514,13 +447,10 @@ handlers.MIRROR_TIMER_STOP = function(name)
 end
 
 ---------------------------------------------------------------------------
--- DISCOVER: uncovering a new area of the map. The game says so twice: in the
--- system channel with the experience gained ("Discovered Crystal Lake: 65
--- experience gained") and on screen ("Discovered: Crystal Lake"). Both are
--- matched with the client's own format strings, so any language works. The
--- game gives no ID for the area found (the exploration API answers with the
--- area the character stands in, which need not be the one uncovered), so the
--- name is all there is.
+-- DISCOVER: a new area of the map, announced in the system channel and on
+-- screen, matched with the client's own format strings so any language works.
+-- The game gives no ID for the area found (the exploration API answers with
+-- where the character stands), so the name is all there is.
 ---------------------------------------------------------------------------
 
 local DISCOVER_REPEAT = 5   -- s; the two announcements of one discovery arrive together
@@ -564,24 +494,15 @@ function WJ.onInfoMessage(message)
 end
 
 ---------------------------------------------------------------------------
--- TALLY: the game's own counters, the ones the Statistics pane shows:
--- creatures and critters killed, food eaten, deaths by cause, flight paths
--- taken, duels won. A session opens with every counter that has a value;
--- after that a line is written when one changes, which the game does within
--- a second or two of the act (CRITERIA_UPDATE says that something moved, but
--- not what). A counter's name rides along the first time it is written.
+-- TALLY: the game's own counters, the ones the Statistics pane shows. A session
+-- opens with every counter that has a value, then a line is written when one
+-- changes (CRITERIA_UPDATE says something moved, not what), with its name the
+-- first time. Money counters come as formatted text and are left to MONEY.
 --
--- Counters of money are left out: the game hands them over as formatted text
--- with coin icons, and MONEY already records every change exactly.
---
--- Two ways to read a counter, far apart in cost. By category and index, the
--- way StatisticsFrame.lua lists the pane, GetStatistic takes about 0.7 ms a
--- counter on Retail 12.1.5, and the pane there has over two thousand (WoW
--- Forever has two hundred): read in one frame they freeze the game for a
--- second and a half. By its ID, GetStatistic(id) answers the same in about
--- 0.002 ms. So the first pass of a load walks the pane by index to learn the
--- IDs, spread across frames at a few milliseconds each, and every pass after
--- it reads all the counters by ID, which takes a few milliseconds in all.
+-- GetStatistic by category and index, as StatisticsFrame.lua lists the pane, is
+-- slow enough that the whole pane in one frame stalls the game; by ID it is
+-- fast. So the first pass walks the pane across frames to learn the IDs, and
+-- later passes read by ID.
 ---------------------------------------------------------------------------
 
 local TALLY_SETTLE = 2       -- s after the game reports progress before counters are read
@@ -602,8 +523,7 @@ local function haveTallies()
   return GetStatisticsCategoryList and GetCategoryNumAchievements and GetStatistic
 end
 
--- The client's millisecond clock, or a clock that never moves on a client
--- without one (then a pass finishes in one frame).
+-- The client's millisecond clock, or a still one (a pass then takes one frame).
 local function clockMs()
   local t = debugprofilestop and debugprofilestop()
   if type(t) ~= "number" then return 0 end
@@ -627,8 +547,7 @@ local function noteCounter(id, value)
   return id
 end
 
--- The pass's next counter read; false when none is left. The first pass walks
--- the pane by index and remembers each ID; a pass by ID reads the IDs it learnt.
+-- The pass's next counter read; false when none is left.
 local function readNext()
   if pass.byID then
     if pass.index >= #statIDs then return false end
@@ -712,9 +631,8 @@ onFrame = function()
   end
 end
 
--- opening: the request that may start the first pass. Any other request waits
--- until that pass has finished, then reads every counter by ID. A pass asked
--- for while one runs follows it, once, however many ask.
+-- opening: the request that may start the first pass; others wait for it. A
+-- pass asked for while one runs follows it, once.
 local function readTallies(opening)
   if not haveTallies() then return end
   if not opening and not talliesOpened then return end
@@ -736,10 +654,9 @@ handlers.CRITERIA_UPDATE = function()
 end
 
 ---------------------------------------------------------------------------
--- NPCSAY: what creatures and NPCs say, yell and emote nearby. A line a
--- speaker repeats is written once a minute at most, and no more than twenty
--- lines a minute in all, so a busy street can't fill the recording. Players'
--- chat is never read here: these events carry only the game's own characters.
+-- NPCSAY: what creatures and NPCs say, yell and emote nearby, a repeated line
+-- once a minute at most and twenty lines a minute in all. These events carry
+-- only the game's own characters, never players' chat.
 ---------------------------------------------------------------------------
 
 local NPC_REPEAT     = 60   -- s before the same speaker's same line is written again
@@ -777,9 +694,8 @@ handlers.CHAT_MSG_MONSTER_PARTY   = npcSpeech("party")
 handlers.CHAT_MSG_RAID_BOSS_EMOTE = npcSpeech("boss")
 
 ---------------------------------------------------------------------------
--- RULES: the rules this character plays under, which never change during a
--- session: hardcore, self-found, and the interface preset chosen at the
--- character screen (WoW Forever: 0 Classic, 1 Modern).
+-- RULES: hardcore, self-found, and the interface preset chosen at the character
+-- screen (WoW Forever: 0 Classic, 1 Modern), fixed for the session.
 ---------------------------------------------------------------------------
 
 local function answer(owner, name)
@@ -801,13 +717,9 @@ end
 -- Session start and resume
 ---------------------------------------------------------------------------
 
--- At session start: the meter's newest fight stands as the last one written, as
--- the meter shows it now, and writeFight's own rule tells the two cases apart. A
--- fight that ended before this session never grows, so it is never written as one
--- that just ended; one still running grows, and its end writes it once, whole, as
--- if the session's start weren't there. When the meter hides how far the fight has
--- got, as it does in combat (a reload or a resume mid-fight), nothing stands: the
--- fight is this session's, written at its end.
+-- At session start the meter's newest fight stands as written, so it gets a line
+-- only if it grows, as a fight still running does. When the meter hides it (in
+-- combat), nothing stands and the fight is written at its end.
 function WJ.seedMoments()
   lastFight = nil
   if not haveMeter() then return end
@@ -820,8 +732,7 @@ function WJ.seedMoments()
   lastFight = { id = id, duration = duration, totals = totals }
 end
 
--- With the opening snapshot, once the client has loaded the character. The
--- counters are not here: the snapshot itself starts their first pass.
+-- With the opening snapshot; the snapshot itself starts the counters' first pass.
 function WJ.writeOpeningMoments()
   writeRules()
   syncAuras()

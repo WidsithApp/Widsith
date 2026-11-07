@@ -1,12 +1,7 @@
 -- Widsith — the options panel
 --
--- The same settings as the icon's menu, under Options → AddOns → Widsith, so a
--- hidden icon can always be brought back, and an About page beside it with the
--- version, what the addon does and where recordings are replayed. Both are
--- built with the game's own settings panel, so they look like the rest of it
--- and its search finds them. The settings themselves are the account's and are
--- read and changed through the icon's own functions, so a change here shows on
--- the icon at once, and the reverse.
+-- The icon's settings and an About page in the game's own settings panel, so a hidden
+-- icon can always be brought back. Settings go through the icon's functions, so both agree.
 
 local ADDON_NAME, WJ = ...
 
@@ -16,8 +11,7 @@ local CONTACT = "info@widsith.app"
 
 local category
 
--- What each setting is when nothing has been changed (Save.lua): the panel's
--- Defaults button puts these back.
+-- The defaults (Save.lua), which the panel's Defaults button puts back.
 local DEFAULTS = WJ.DEFAULTS
 
 -- The row and the setting behind it, so a row can be made to depend on another.
@@ -37,9 +31,8 @@ local function sizeOptions()
   return container:GetData()
 end
 
--- The About page: a plain frame the panel shows as a canvas. Short lines
--- under small headings, to be read at a glance, and the addresses in edit
--- boxes so they can be copied (nothing can be opened from inside the game).
+-- The About page, a plain canvas. The addresses sit in edit boxes to be copied, since
+-- nothing can be opened from inside the game.
 local ABOUT = {
   { "What it does", WJ.NAME .. " keeps a record of your character's journey as you play: where you went, what you did and when." },
   { "Saving", "The game writes the recording only when you log out or reload. The icon shrinks the longer you go unsaved; click it to save, which reloads." },
@@ -112,8 +105,7 @@ local function createAbout()
     last = label
   end
 
-  -- What changed in this version that a player would notice (Welcome.lua), where
-  -- the one line in chat at the first login on it points.
+  -- This version's notes (Welcome.lua).
   local notes = WJ.whatsNew and WJ.whatsNew()
   if notes then
     local head = frame:CreateFontString(nil, "ARTWORK", "GameFontNormal")
@@ -162,8 +154,7 @@ local function createPanel()
   layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("The recording"))
   local shots, shotsOn = checkbox("Screenshot highlights", "screenshots", "Takes a screenshot at the highlights of your journey, such as a new level, a boss's first defeat or your first time in a zone. The pictures go in your Screenshots folder with a tiny mark in the corner, and your own screenshots aren't touched.")
   local chat = checkbox("Show chat in the pictures", "shotsChat", "Leaves your chat windows in the pictures, whispers included. The friends list, the guild window and Battle.net pop-ups are always hidden. Off, chat is hidden for the picture too.")
-  -- Indented under the setting it depends on and greyed while that is off, as
-  -- the game's own dependent settings are.
+  -- Indented under the setting it depends on, and greyed while that is off.
   chat:SetParentInitializer(shots, function() return shotsOn:GetValue() end)
   layout:AddInitializer(CreateSettingsButtonInitializer("Save the recording", "Save now",
     function() if WJ.saveNow then WJ.saveNow() end end,
@@ -173,7 +164,7 @@ local function createPanel()
     "Stopped, nothing is recorded on this character until you start it again.", true))
 
   Settings.RegisterCanvasLayoutSubcategory(category, createAbout(), "About")
-  -- Registering the category is the last step, as the game's own guide has it.
+  -- Registering the category comes last.
   Settings.RegisterAddOnCategory(category)
 end
 

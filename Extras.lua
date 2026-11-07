@@ -2,11 +2,8 @@
 --
 -- Everything beyond the core journey: travel spells and mounts, reputation,
 -- skills and professions, achievements, gear and the character sheet,
--- currency, encounters, spec and hearth, gear sets and talents, the guild, trading with NPCs and
--- players, pet battles, and the small things (jumps, emotes).
--- Speech is here too, switched off. Every line here is a fact the game
--- stated; where a fact is inferred from a consequence (SPELL) the line says
--- so in a field.
+-- currency, encounters, spec and hearth, gear sets and talents, the guild,
+-- trading, pet battles, jumps and emotes. Speech is here too, switched off.
 
 local _, WJ = ...
 
@@ -29,32 +26,17 @@ end
 ---------------------------------------------------------------------------
 -- Casts: MOUNT at cast time, SPELL when a cast is followed by a relocation.
 --
--- UNIT_SPELLCAST_SUCCEEDED fires for every ability, so casts are only kept
--- in memory (the last few). A mount is known at cast time from the mount
--- journal — no list to maintain. A travel spell is known only by what
--- follows: a loading screen, or two samples further apart than anything can
--- travel (Position.lua). Then the most recent cast that finished within
--- CAST_SLACK seconds before the move began is written as SPELL with the time
--- it was cast and the reason it was singled out.
---
--- The window is measured from the start of the move, not from when it was
--- noticed. A loading screen is dated by LOADING_SCREEN_ENABLED (it can stay up
--- 30 s or more, and a window measured from PLAYER_ENTERING_WORLD would have to
--- be long enough to catch a mount summoned on the way to an instance door). A
--- jump is dated by the previous sample, which saw the character still in place.
---
--- The line also carries the time the cast *began*. UNIT_SPELLCAST_START and
--- UNIT_SPELLCAST_CHANNEL_START carry the same castGUID as the SUCCEEDED
--- that ends the cast, so a hearthstone's ten seconds of casting are known,
--- not guessed. Instant casts have no start; the field stays empty.
+-- A mount is known at cast time from the mount journal. A travel spell is known
+-- only by the move that follows it (a loading screen, or a jump in Position.lua):
+-- the cast that finished just before the move began is written as SPELL.
+-- UNIT_SPELLCAST_START carries the same castGUID as the SUCCEEDED that ends the
+-- cast, which gives the time it began.
 ---------------------------------------------------------------------------
 
 local casts = {}
 local CAST_KEEP = 8
--- A teleport is the cast's own effect: the server moves the character as the
--- cast finishes, so the loading screen (or the far sample) follows within a
--- round trip — well under a second. 3 s allows for a bad lag spike; anything
--- older is a cast that merely happened before the player walked somewhere.
+-- How long before a move its cast may have finished: a teleport follows its
+-- cast within a round trip, and the rest allows for lag.
 local CAST_SLACK = 3
 
 -- castGUID -> session ms when that cast began; only the last few are kept.
@@ -73,8 +55,7 @@ handlers.UNIT_SPELLCAST_SUCCEEDED = function(unit, castGUID, spellID)
   if unit ~= "player" or spellID == nil or secret(spellID) then return end
   local mountID = C_MountJournal and C_MountJournal.GetMountFromSpell and C_MountJournal.GetMountFromSpell(spellID)
   if mountID then
-    -- A mount is summoned, not travelled by: never a candidate for SPELL (a
-    -- mount called at an instance door would otherwise be named for the load).
+    -- A mount is summoned, not travelled by: never a candidate for SPELL.
     write("MOUNT", spellID, mountID)
     WJ.highlightShot("mount", "first")
     return
@@ -85,10 +66,8 @@ handlers.UNIT_SPELLCAST_SUCCEEDED = function(unit, castGUID, spellID)
   if #casts > CAST_KEEP then table.remove(casts, 1) end
 end
 
--- When the last loading screen appeared (GetTime()); consumed by the next
--- "load" relocation. LOADING_SCREEN_ENABLED and LOADING_SCREEN_DISABLED have
--- no payload (Blizzard's LoadingScreenDocumentation.lua). Position.lua is told
--- too: it writes no periodic lines while a loading screen is up.
+-- When the last loading screen appeared (GetTime()), used by the next "load"
+-- relocation. Both events have no payload (LoadingScreenDocumentation.lua).
 local loadingClock
 handlers.LOADING_SCREEN_ENABLED = function()
   loadingClock = GetTime()
@@ -104,8 +83,7 @@ end
 function WJ.onRelocation(reason, distance, since)
   local from, to
   if reason == "load" then
-    -- No loading screen seen (a PLAYER_ENTERING_WORLD without one): nothing to
-    -- date the move by, so nothing is named rather than something guessed.
+    -- No loading screen seen: nothing dates the move, so no cast is named.
     to, loadingClock = loadingClock, nil
     from = to and to - CAST_SLACK
   else
@@ -113,11 +91,8 @@ function WJ.onRelocation(reason, distance, since)
     from = (since or to) - CAST_SLACK
   end
   if from then
-    -- The cast behind a move is the one that finished just before it. A load is
-    -- dated by its loading screen, so that is the latest cast in the window. A
-    -- jump is only noticed at the next tick, up to a second after it, so a cast
-    -- made on arrival (Sprint, travel form) can fall in the window too: there it
-    -- is the earliest, since nothing else finishes while a teleport is cast.
+    -- A load's cast is the latest in the window. A jump is noticed up to a second
+    -- late, so a cast made on arrival can fall in the window too: there it is the earliest.
     local pick
     for i = #casts, 1, -1 do
       local c = casts[i]
@@ -137,14 +112,9 @@ end
 ---------------------------------------------------------------------------
 -- Reputation: REP factionID reaction standing delta label.
 --
--- Changes: the reputation list hides collapsed headers from index iteration,
--- so a diff over it misses factions. The game announces every change in chat
--- with the faction's name and the amount; the name resolves to an ID through
--- a one-time scan of GetFactionDataByID, and the standing is read from the
--- same call. Unknown name: empty ID, the label stands.
---
--- State: every faction the Reputation pane lists, with the opening snapshot
--- (writeReputations, below), the delta empty.
+-- A change comes from the game's chat message, since the reputation list hides
+-- the factions under a collapsed header. The name is matched to an ID by a
+-- one-time scan of GetFactionDataByID; an unknown name leaves the ID empty.
 ---------------------------------------------------------------------------
 
 local FACTION_FORMATS = {
@@ -197,19 +167,9 @@ local function factionIDByName(name)
   return factionIDs[name]
 end
 
--- Every reputation the game's Reputation pane lists, written with the opening
--- snapshot as REP lines with an empty delta: a standing as it is, not a gain.
--- Read the way the pane reads it (ReputationFrame.lua: C_Reputation.GetNumFactions
--- and GetFactionDataByIndex), since that list holds exactly the factions the
--- character has met. Asking by ID instead (GetFactionDataByID, as the name lookup
--- above does) answers with the same data but nothing in it says whether the
--- character has met the faction.
--- A plain header is skipped; a header with a standing of its own is a faction.
--- Every standing is written, the starting ones included (Neutral at 0, a home
--- city's Friendly), because the pane lists them too. Its one blind spot is
--- the pane's own: a header the player has collapsed hides its factions from the
--- list, and they are not asked for, since expanding it would change the
--- player's window. A change to one of them is still written when it happens.
+-- Every faction the Reputation pane lists, read as ReputationFrame.lua reads it,
+-- since only that list says which factions the character has met. A collapsed
+-- header is never expanded, since that would change the player's window.
 local function writeReputations()
   local api = C_Reputation
   if not (api and api.GetNumFactions and api.GetFactionDataByIndex) then return end
@@ -249,26 +209,23 @@ end
 ---------------------------------------------------------------------------
 -- Skills: SKILL on change and at session start; RECIPE; CRAFT; RECIPES (below).
 --
--- On WoW Forever, every line of the character sheet's Skills tab (weapons,
--- defence, armour, languages, class and secondary skills) from C_SkillInfo, as
--- Forever's own SkillsFrame.lua reads it, with the line's category ID. Retail's
--- C_SkillInfo has no GetSkillLineInfo (12.1.5); there, only the professions.
+-- On WoW Forever, every line of the Skills tab from C_SkillInfo, as its
+-- SkillsFrame.lua reads it. Retail's C_SkillInfo has no GetSkillLineInfo, so
+-- there only the professions are written.
 ---------------------------------------------------------------------------
 
 local skillState = {}
 local knownSkillIDs = {}   -- every C_SkillInfo line seen this load
 
--- Also the line it belongs under, and the bonus from gear or buffs (the tab's green
--- "+N"). Some professions come as two lines (Skinning: 393, and 2947 hidden beneath
--- it); the parent says which is the profession and which its tier.
+-- Also the parent line, which tells a profession from its tier, and the bonus
+-- from gear or buffs (the tab's green "+N").
 local function skillEntry(info)
   return { rank = info.rank, max = info.maxRank, name = info.name, category = info.skillLineCategoryID,
     parent = info.parentSkillLineID, modifier = info.modifier }
 end
 
 -- A collapsed header hides its lines from the index list, so a line seen once
--- is afterwards asked for by its ID: collapsing Weapon Skills must not read as
--- the skills vanishing, or hide a rise in one of them.
+-- is afterwards asked for by its ID.
 local function skillInfoNow(out)
   local api = C_SkillInfo
   if not (api and api.GetNumSkillLines and api.GetSkillLineInfo) then return end
@@ -316,10 +273,8 @@ local function writeSkills(all)
   skillState = now
 end
 
--- The opening snapshot writes every skill and the guild (writeOpeningExtras). Until it
--- has, the change events the client fires while loading (SKILL_LINES_CHANGED,
--- PLAYER_GUILD_UPDATE, half a second into a login) would write them twice, the first
--- time with the guild's realm not yet known.
+-- Set by the opening snapshot, which writes every skill and the guild; the change
+-- events the client fires while loading are ignored until then.
 local opened = false
 
 local skillPending = false
@@ -348,27 +303,10 @@ end
 ---------------------------------------------------------------------------
 -- Recipes known: RECIPES skillLineID recipeIDs list.
 --
--- The client holds a profession's recipes only once its window has been
--- opened (before that the list is empty), so they are read when the player
--- opens the window, and never by opening it for them. TRADE_SKILL_SHOW,
--- TRADE_SKILL_LIST_UPDATE and TRADE_SKILL_DATA_SOURCE_CHANGED (a switch to
--- another profession inside the window) all lead to one read half a second
--- later, once C_TradeSkillUI.IsTradeSkillReady() says the window has loaded.
---
--- Only the player's own recipes: nothing is read while the window shows
--- someone else's (a profession linked in chat, a guild's or a guild member's
--- list, an NPC's), and nothing when the client can't say whose it shows.
---
--- skillLineID is the profession's own (GetBaseProfessionInfo), recipeIDs the
--- learned ones as a sorted comma list, from C_TradeSkillUI.GetAllRecipeIDs()
--- (every recipe of the profession, learned or not, whatever the window's
--- filters) and GetRecipeInfo(id).learned. A client without GetAllRecipeIDs
--- falls back to GetFilteredRecipeIDs(), the list the window itself shows,
--- which follows the window's filters and search: then list is "filtered"
--- rather than "all", and a recipe hidden by a filter is missing from it.
--- Written when the list differs from the last one written for that
--- profession in the session; a profession with no learned recipe writes
--- nothing.
+-- The client holds a profession's recipes only once its window has been opened,
+-- so they are read when the player opens it, and only the player's own. A client
+-- without GetAllRecipeIDs falls back to GetFilteredRecipeIDs, which follows the
+-- window's filters, and list is "filtered" rather than "all".
 ---------------------------------------------------------------------------
 
 local RECIPES_SETTLE = 0.5
@@ -458,17 +396,9 @@ handlers.ACHIEVEMENT_EARNED = function(achievementID, alreadyEarned)
   write("ACHIEVE", achievementID, alreadyEarned and 1 or 0, name)
 end
 
--- The event's second argument is documented both ways round (warcraft.wiki.gg: "true when a
--- slot becomes empty"), and trusting it wrote every EQUIP with an empty item. The slot
--- itself is the fact: read it, and an empty read is an emptied slot. Putting on a saved
--- gear set writes its EQUIP lines too, followed by GEARSWAP.
---
--- The event doesn't always come for every change. When the game takes a piece off and puts
--- it back by itself (a quest's disguise ending puts the helm in the bags and then back on the
--- head), the slot can be read empty at the one event and filled with no second event to say
--- so. So the slot is read again a second after its last event, and a second EQUIP is
--- written only when the item differs from the one written. Several changes to one slot
--- within the second share one re-read.
+-- The slot is read rather than the event's second argument, which is documented
+-- both ways round. When the game takes a piece off and puts it back by itself no
+-- second event may come, so the slot is read again a second after its last event.
 local EQUIP_RECHECK = 1
 local equipWritten = {}   -- slot -> the item last written for it, as written
 local equipTimers = {}    -- slot -> the re-read waiting for it
@@ -498,28 +428,19 @@ end
 
 ---------------------------------------------------------------------------
 -- Stats: what the gear added up to, as the character sheet shows it.
--- Written with every SNAP (Core.snapshot) and once equipment has settled
--- after a change (the client raises every slot at login), and only when a
--- value differs from the last STATS of the session. Never while the game
--- hides any of it: in combat, an encounter or a PvP match the attribute
--- calls answer secret values, and a line with its attributes empty says
--- nothing the sheet would show. Such a line is owed instead, and written a
--- second after combat ends, or at the next snapshot or gear change if the
--- restriction still holds. A function the client lacks is an empty field
--- and never defers a line; only a hidden value does. Every call is guarded:
--- a function the client doesn't have (WoW Forever, older rulesets) or one
--- that throws is an empty field. The stat APIs are SecretWhenUnitStatsRestricted
--- (Blizzard's UI source, warcraft.wiki.gg), so nothing is compared or added
--- before issecretvalue() says it may be, and the comparison with the last line
--- is made on the written field strings, which field() has already emptied.
+-- Written with every SNAP and once equipment settles after a change, when a
+-- value differs from the last STATS. The stat APIs are
+-- SecretWhenUnitStatsRestricted (combat, an encounter, a PvP match), so a line
+-- with a hidden value is held back until it can be read whole. A function the
+-- client lacks, or one that throws, is an empty field.
 ---------------------------------------------------------------------------
 
 local STATS_SETTLE = 1   -- s after the last EQUIP of a burst
 
 local hiddenRead = false   -- whether a read since the last reset answered a secret value
 
--- The n-th return of fn(...), or nil when fn is missing or throws. A secret
--- answer is returned as it is (field() empties it) and noted.
+-- The n-th return of fn(...), or nil when fn is missing or throws; a secret
+-- answer is returned as it is and noted.
 local function ask(fn, n, ...)
   if type(fn) ~= "function" then return nil end
   local results = { pcall(fn, ...) }
@@ -529,9 +450,8 @@ local function ask(fn, n, ...)
   return v
 end
 
--- The sheet's Critical Strike (PaperDollFrame_SetCritChance): the highest of
--- melee, ranged, and the lowest spell-school chance (holy .. arcane).
--- A client without one of these (Forever, Classic) uses whichever exist.
+-- The sheet's Critical Strike (PaperDollFrame_SetCritChance): the highest of melee,
+-- ranged and the lowest spell-school chance, from whichever the client has.
 local function critChance()
   local best = ask(GetCritChance, 1)
   if best ~= nil and not usable(best) then return best end   -- secret: field() empties it
@@ -547,10 +467,8 @@ local function critChance()
   return best
 end
 
--- Which primary stat the sheet shows: the spec's (PaperDollFrame:
--- select(6, C_SpecializationInfo.GetSpecializationInfo(spec, false, false, nil,
--- sex)); LE_UNIT_STAT_ 1 strength, 2 agility, 4 intellect). Empty without a spec,
--- when the sheet shows all three.
+-- The spec's primary stat, as PaperDollFrame.lua finds it (1 strength, 2 agility,
+-- 4 intellect); empty without a spec.
 local function primaryStat()
   local getIndex = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
   local getInfo  = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
@@ -560,7 +478,7 @@ local function primaryStat()
 end
 
 -- The sheet's Versatility: the damage-done bonus from rating plus the flat bonus.
--- CR_VERSATILITY_DAMAGE_DONE is 29 in PaperDollFrame.lua (12.1.0).
+-- CR_VERSATILITY_DAMAGE_DONE is 29 in PaperDollFrame.lua.
 local function versatility()
   local cr = CR_VERSATILITY_DAMAGE_DONE or 29
   local rating, bonus = ask(GetCombatRatingBonus, 1, cr), ask(GetVersatilityBonus, 1, cr)
@@ -569,11 +487,8 @@ local function versatility()
 end
 
 ---------------------------------------------------------------------------
--- The rest of the sheet, as WoW Forever's Classic-shaped sheet shows it (its own
--- PaperDollFrame.lua and PaperDollFrameStats.lua): spirit, power, attack power, hit / crit / haste for melee, ranged and spell,
--- expertise, armour and spell penetration, spell power and healing, defence,
--- dodge, parry, block, resistances, and weapon damage and speed. Written on
--- Retail too; whatever a client lacks is an empty field.
+-- The rest of the sheet, as WoW Forever's Classic-shaped sheet shows it (its
+-- PaperDollFrame.lua and PaperDollFrameStats.lua). Written on Retail too.
 ---------------------------------------------------------------------------
 
 -- The sum of the arguments, or nil when one is missing or secret.
@@ -655,8 +570,7 @@ local function sheetValues()
   put(spellPower())
   put(ask(GetSpellBonusHealing, 1))
   put(ask(GetSpellPenetration, 1))
-  -- Defence with gear and buffs, as the sheet's local GetEffectiveDefenseSkill works it out
-  -- (Camelot/PaperDollFrameStats.lua): max(0, base + modifier) of UnitDefenseSkill.
+  -- Defence with gear and buffs, as GetEffectiveDefenseSkill in Camelot/PaperDollFrameStats.lua works it out.
   local defenseBase, defenseModifier = ask(UnitDefenseSkill, 1, "player"), ask(UnitDefenseSkill, 2, "player")
   local defense = sum(defenseBase, defenseModifier or 0)
   put(defense and math.max(0, defense) or defenseBase)
@@ -738,8 +652,7 @@ function WJ.statsSoon()
   statsTimer = C_Timer.NewTimer(STATS_SETTLE, writeStatsSettled)
 end
 
--- Called when combat ends (Events.lua): a line the fight hid is written a
--- second later, when the game has usually released the sheet.
+-- Called when combat ends (Events.lua): a line the fight held back is written a second later.
 function WJ.statsAfterCombat()
   if statsOwed then WJ.statsSoon() end
 end
@@ -749,16 +662,8 @@ handlers.CURRENCY_DISPLAY_UPDATE = function(currencyID, quantity, change, gainSo
   write("CURRENCY", currencyID, quantity, change, gainSource, destroyReason)
 end
 
--- Every currency the game's Currency tab lists, written with the opening
--- snapshot as CURRENCY lines with the change and its reasons empty: an amount
--- as it is, not a gain. Read the way the tab reads it, through
--- C_CurrencyInfo.GetCurrencyListSize and GetCurrencyListInfo(index), whose
--- CurrencyInfo says which rows are headers. A header is skipped. A currency
--- whose ID or amount the game hides is left out rather than written with no
--- amount. As with the reputations, the tab's one blind spot is kept: a group
--- the player has collapsed hides its currencies from the list, and the list
--- is never expanded to find them (ExpandCurrencyList would change the
--- player's window). A change to one of them is still written when it happens.
+-- Every currency the Currency tab lists, read as the tab reads it. A collapsed
+-- group is never expanded, since that would change the player's window.
 local function writeCurrencies()
   local api = C_CurrencyInfo
   if not (api and api.GetCurrencyListSize and api.GetCurrencyListInfo) then return end
@@ -814,9 +719,8 @@ handlers.HEARTHSTONE_BOUND = function()
 end
 
 ---------------------------------------------------------------------------
--- Gear sets and talents. Both are read the way the game's own windows read
--- them, and only through calls that may be missing on some client: a call the
--- client lacks, or one that throws, writes nothing.
+-- Gear sets and talents, read the way the game's own windows read them. A call
+-- the client lacks, or one that throws, writes nothing.
 ---------------------------------------------------------------------------
 
 local SETTLE = 0.5   -- s after the last of a burst of change events
@@ -830,20 +734,13 @@ local function readable(t)
 end
 
 ---------------------------------------------------------------------------
--- Gear sets: the equipment manager on the character pane (C_EquipmentSet, as
--- PaperDollFrame.lua reads it).
+-- Gear sets: the equipment manager (C_EquipmentSet, as PaperDollFrame.lua reads it).
 --
 -- GEARSET setID name itemIDs ignoredSlots specID iconFileID: one line per set
--- with the opening snapshot, and whenever a set differs from its last line
--- (EQUIPMENT_SETS_CHANGED). itemIDs are GetItemIDs' answer for slots 1-19 in
--- slot order, an empty element where the game gives nothing; ignoredSlots are
--- the slots the set leaves alone when it is put on; specID is the spec the
--- set is assigned to. A deleted set is its ID with every other field empty.
---
--- GEARSWAP setID result startT: the game reporting a set put on
--- (EQUIPMENT_SWAP_FINISHED), with the time it announced the swap
--- (EQUIPMENT_SWAP_PENDING). The EQUIP lines in between are the swap's: gear
--- the character already had, changed into.
+-- with the opening snapshot and whenever a set changes, itemIDs for slots 1-19
+-- in order. A deleted set is its ID with every other field empty.
+-- GEARSWAP setID result startT: a set put on (EQUIPMENT_SWAP_FINISHED), with the
+-- time of EQUIPMENT_SWAP_PENDING. The EQUIP lines in between are the swap's.
 ---------------------------------------------------------------------------
 
 local GEAR_SLOTS = 19
@@ -934,21 +831,11 @@ end
 ---------------------------------------------------------------------------
 -- Talents: TALENTS specGroup configID treeID nodes importString.
 --
--- The talent window is the trait tree (Blizzard_ClassTalentsFrame.lua): the
--- active spec group's config, as WoW Forever's window finds it
--- (C_SpecializationInfo.GetCombatConfigIDForSpecGroup), or
--- C_ClassTalents.GetActiveConfigID on a client without spec groups; the tree
--- from C_Traits.GetConfigInfo; each node's bought ranks from
--- C_Traits.GetNodeInfo. nodes is every node with points bought, as
--- nodeID:entryID:rank in node order (a node the tree grants without a point
--- spent is left out); importString is the game's own export string for the
--- config, which talent calculators read. Written with the opening snapshot
--- and after a change has been applied, when it differs from the last line;
--- never while points are clicked but not applied (ConfigHasStagedChanges).
---
--- Classic-era clients have the older talent tabs instead (GetNumTalentTabs,
--- and GetTalentInfo(tab, index) with each talent's rank). WoW Forever's window
--- doesn't use them, so they aren't read: on such a client nothing is written.
+-- The trait tree (Blizzard_ClassTalentsFrame.lua) of the active spec group's
+-- config, found as WoW Forever's window finds it, or by GetActiveConfigID on a
+-- client without spec groups. nodes is nodeID:entryID:rank for each node with
+-- points bought. Never written while changes are staged but not applied.
+-- Classic-era talent tabs (GetNumTalentTabs) aren't read: there nothing is written.
 ---------------------------------------------------------------------------
 
 local lastTalents
@@ -1021,11 +908,9 @@ handlers.PLAYER_SPECIALIZATION_CHANGED = function(unit)
 end
 
 ---------------------------------------------------------------------------
--- Guild: the player's own guild and rank, so the replay can
--- show the guild the character was in at the playhead. GUILD name rankName
--- realm rankIndex; all empty when the character left. At login the client
--- may not know the guild yet: nothing is written until it does, and a
--- character in no guild writes nothing at all.
+-- Guild: GUILD name rankName realm rankIndex, all empty when the character
+-- leaves. At login the client may not know the guild yet, so nothing is
+-- written until it does; a character in no guild writes nothing.
 ---------------------------------------------------------------------------
 
 local lastGuild   -- field key of the last GUILD written; nil before the first read
@@ -1050,15 +935,11 @@ handlers.PLAYER_GUILD_UPDATE = function(unit)
 end
 
 ---------------------------------------------------------------------------
--- Trades: what the player gave and got in a completed trade
--- with another player. TRADE partnerGUID moneyGiven moneyReceived itemsGiven
--- itemsReceived partnerName, items as itemID:count comma lists. The trade
--- window (Blizzard's TradeFrame.lua) is read on every change,
--- since its slots are empty by the time it closes. TRADE_CLOSED fires for a
--- cancel too: completion is the game's "Trade complete." message
--- (UI_INFO_MESSAGE, ERR_TRADE_COMPLETE), which arrives after TRADE_CLOSED.
--- Both sides accepting is no substitute: when the partner accepts last, the
--- trade completes with no TRADE_ACCEPT_UPDATE(1, 1).
+-- Trades: TRADE partnerGUID moneyGiven moneyReceived itemsGiven itemsReceived
+-- partnerName, items as itemID:count lists. The window (TradeFrame.lua) is read
+-- on every change, since its slots are empty by the time it closes. TRADE_CLOSED
+-- fires for a cancel too, and a trade can complete with no TRADE_ACCEPT_UPDATE(1, 1),
+-- so completion is the "Trade complete." message (ERR_TRADE_COMPLETE).
 ---------------------------------------------------------------------------
 
 local TRADE_SLOTS = MAX_TRADABLE_ITEMS or 6   -- slot 7 shows an enchant; it isn't traded
@@ -1159,21 +1040,9 @@ handlers.PET_BATTLE_CLOSE = function()
 end
 
 ---------------------------------------------------------------------------
--- Speech: switched off. Nothing anyone types in chat is recorded, the
--- player's own /say and /yell included: what a player says is theirs, and it
--- isn't kept even in the file on their own disk.
---
--- The code stays, so that turning it on is a change of one line. On, it would
--- write what the character said aloud with /say or /yell (what anyone standing
--- nearby read in a bubble over them), only the player's own lines, never
--- anyone else's, never whispers, party, guild or channels: SPEECH kind
--- languageID text, the text as the game delivered it (links included), tabs
--- and line breaks made spaces by field() like any other. During chat lockdown
--- (12.0: combat in encounters) the text and the sender are secret (CHAT_MSG_SAY
--- is SecretInChatMessagingLockdown), so the line can't be told to be ours, and
--- nothing would be written.
---
--- Off, the chat events aren't even registered: the recorder never sees them.
+-- Speech: switched off, so nothing anyone types in chat is recorded. On, it would
+-- write SPEECH kind languageID text for the player's own /say and /yell only.
+-- CHAT_MSG_SAY is SecretInChatMessagingLockdown, so nothing is written during chat lockdown.
 ---------------------------------------------------------------------------
 
 local RECORD_SPEECH = false
@@ -1217,11 +1086,9 @@ handlers.MERCHANT_SHOW   = noteRepairCost
 handlers.MERCHANT_UPDATE = noteRepairCost
 
 ---------------------------------------------------------------------------
--- Hooks: post-hooks on the functions the default UI calls. hooksecurefunc
--- never taints the original and works on protected functions. Each is
--- guarded so a function that no longer exists costs nothing, and each body
--- runs under WJ.guard so a throw is an ERR line named after the function,
--- never an error popup.
+-- Hooks: post-hooks on the functions the default UI calls; hooksecurefunc never
+-- taints the original. A function the client lacks is skipped, and a throw in a
+-- body is written as an ERR line named after the function.
 ---------------------------------------------------------------------------
 
 local function hook(owner, name, fn)
@@ -1238,16 +1105,11 @@ function WJ.installHooks()
     counts.jumps = counts.jumps + 1
   end)
 
-  -- EMOTE: since 12.0 the game performs a typed emote (ChatFrameEditBox.lua) and one
-  -- from the emote menu (ChatFrameMenuButton.lua) with C_ChatInfo.PerformEmote; DoEmote is only
-  -- a deprecated wrapper around it (Deprecated_ChatInfo.lua), so hooking DoEmote alone missed
-  -- every emote. Hook PerformEmote, which a DoEmote call also reaches; DoEmote only on a client
-  -- without it, never both, or a DoEmote would be written twice. Post-hooks can't see whether
-  -- the game refused the emote, so a refused one is still written.
-  -- Opening the world map makes the character read it: the game performs READ itself every
-  -- time the map opens, and the map's frame is already shown when the hook sees it. That READ
-  -- is the map, not the player, so it is left out; a READ the player chooses with the map
-  -- closed is still written.
+  -- EMOTE: the game performs typed and menu emotes with C_ChatInfo.PerformEmote
+  -- (ChatFrameEditBox.lua, ChatFrameMenuButton.lua), and DoEmote is a deprecated wrapper
+  -- around it (Deprecated_ChatInfo.lua), so DoEmote is hooked only on a client without it.
+  -- A refused emote is still written. The game performs READ itself whenever the world map
+  -- opens, so a READ with the map open is left out.
   local function emote(token)
     if type(token) ~= "string" or token == "" then return end
     if token == "READ" and WJ.mapIsOpen() then return end
@@ -1260,10 +1122,8 @@ function WJ.installHooks()
     hook("DoEmote", nil, emote)
   end
 
-  -- QABANDON: the game's abandon dialog sets the quest with
-  -- C_QuestLog.SetAbandonQuest, then calls AbandonQuest; GetAbandonQuest still
-  -- names it in the post-hook. QUEST_REMOVED follows, so
-  -- the QREMOVE after a QABANDON is the abandon's, not a failure's.
+  -- QABANDON: the abandon dialog sets the quest with C_QuestLog.SetAbandonQuest before
+  -- calling AbandonQuest, so GetAbandonQuest still names it here. The QREMOVE that follows is the abandon's.
   hook(C_QuestLog, "AbandonQuest", function()
     local questID = C_QuestLog.GetAbandonQuest and C_QuestLog.GetAbandonQuest()
     if questID and questID ~= 0 then write("QABANDON", questID) end
