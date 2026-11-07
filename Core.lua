@@ -637,7 +637,7 @@ local USED_APIS = {
 -- can tell an expected absence from one that would be news: WoW Forever has no specialization
 -- global (its C_SpecializationInfo has the call); Retail 12.1.5 has none of Forever's rules,
 -- preset, defence skill, Skills tab, spec groups, day and night, or stable. Read in the game on
--- Retail 12.1.5 build 70783 and WoW Forever 1.60.1 build 70840.
+-- Retail 12.1.5 build 70783 and WoW Forever 1.60.1 build 70840, where no event was missing.
 local KNOWN_ABSENT = {
   forever = { functions = { "GetSpecialization" }, events = {} },
   retail = {

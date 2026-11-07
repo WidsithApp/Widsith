@@ -34,8 +34,8 @@ local PROFILES = {
     dayTime = true,                -- C_DateAndTime.IsDayTime and DIEL_CYCLE_CHANGED exist
     diel = true,                   -- the minimap's day/night dial and its ring atlas
     missingEvents = {},
-    -- /widsith check on 1.60.1 build 70840 named the old GetSpecialization global alone (the
-    -- events line is still to be seen); pet battles and the stable are there.
+    -- /widsith check on 1.60.1 build 70840 named the old GetSpecialization global alone, no
+    -- missing message and no missing event; pet battles and the stable are there.
     absent = { "GetSpecialization" },
   },
   retail = {
