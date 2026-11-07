@@ -164,11 +164,11 @@ test("a fight running at a resume is written once at its end, with what it grew 
   game.advance(8)
   -- A session that opens in the middle of a fight. The meter hides the fight's standing, so the
   -- opening seeds nothing of it, and the fight's end writes it once, whole, with what it grew to.
-  game.slash("pause")
+  game.slash("stop")
   game.world.combat = true
   table.insert(game.world.fights, { sessionID = 93, name = "Riverpaw Runt", durationSeconds = 6 })
   game.world.meterDuration, game.world.meterTotal = 6, 50
-  game.slash("resume")
+  game.slash("start")
   game.advance(8)
   game.world.meterDuration, game.world.meterTotal = 14, 120
   leaveCombat(game)
