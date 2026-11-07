@@ -89,7 +89,7 @@ test("the welcome is said once, at the first login on the account", function(gam
   local lines = {}
   for line in ((welcome or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
   same({ lines[2], lines[3], lines[4], lines[5], lines[6] }, { "  - Your gameplay is now being recorded", "  - View it or share it at widsith.app",
-    "  - Download the uploader there to keep it in sync automatically", "", "More details and support in the addon's options, and at widsith.app." },
+    "  - Automatic uploader available", "", "More details and support in the addon's options menu, and at widsith.app." },
     "the welcome's list, a blank line, and where to find more")
   expect(welcome and welcome:sub(-1) == "\n", "the welcome doesn't close with a blank line")
   local messages = 0

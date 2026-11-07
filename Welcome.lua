@@ -20,9 +20,9 @@ local WELCOME = {
   "Thank you for installing " .. NAME .. "!",
   "  - Your gameplay is now being recorded",
   "  - View it or share it at widsith.app",
-  "  - Download the uploader there to keep it in sync automatically",
+  "  - Automatic uploader available",
   "",
-  "More details and support in the addon's options, and at widsith.app.",
+  "More details and support in the addon's options menu, and at widsith.app.",
 }
 
 -- What changed that a player would notice, by version, a few words each. The
