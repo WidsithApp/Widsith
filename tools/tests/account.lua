@@ -116,10 +116,11 @@ test("a new version is announced once per account as one message listing what ch
   eq(#said, 1, "chat messages at the login: one, the version's news in the recording line's place")
   local lines = {}
   for line in ((said[1] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
-  eq(lines[1], "Widsith " .. game.version .. " is installed and recording. What's new:", "the message's first line")
+  eq(lines[1], "Widsith " .. game.version .. " is installed and recording.", "the message's first line")
+  eq(lines[2], "What's new:", "the message's second line")
   -- Chat gets what a player may act on or what changes the way things work; the About page
   -- lists everything, the reminder's new length and the menu's shape included.
-  same({ lines[2], lines[3], lines[4], lines[5] }, { "  - Screenshot highlights on by default",
+  same({ lines[3], lines[4], lines[5], lines[6] }, { "  - Screenshot highlights on by default",
     "  - Chat shown in the screenshots by default", "  - Settings shared by all your characters",
     "  - A paused character stays paused until you resume it" }, "the message's list")
   expect(said[1]:sub(-1) == "\n", "the version's news doesn't close with a blank line")

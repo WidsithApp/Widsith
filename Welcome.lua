@@ -64,7 +64,8 @@ function WJ.tellNews()
     WJ.say(WJ.EMBLEM .. " " .. table.concat(WELCOME, "\n") .. "\n", true)
   else
     local recording = WJ.isRecording() and " and recording" or ""
-    local lines = { version .. " is installed" .. recording .. "." .. (NOTES[version] and " What's new:" or "") }
+    local lines = { version .. " is installed" .. recording .. "." }
+    if NOTES[version] then lines[#lines + 1] = "What's new:" end
     for _, note in ipairs(NOTES[version] or {}) do
       if note.chat then lines[#lines + 1] = "  - " .. note[1] end
     end
