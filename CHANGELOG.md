@@ -2,6 +2,10 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
+## Unreleased
+
+- Under auto-loot, when two corpses with coin are looted within two seconds, the second corpse's coin is no longer recorded with the first one's amount and corpse. The game's message for the first corpse's coin arrives after the coin was already recorded, and it used to be kept as the reason for whatever came next.
+
 ## 0.6.3 · 2026-11-05
 
 - Experience or gold you gain while a loading screen is up, such as the experience for discovering the place you arrive in after a portal or a teleport, is recorded when you arrive. It used to be missed, and only turned up in the recording a few minutes later.
