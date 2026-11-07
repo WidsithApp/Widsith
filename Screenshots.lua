@@ -1,20 +1,15 @@
 -- Widsith — Screenshots
 --
--- SHOT: the game saved a screenshot. The player's own are only noted, and
--- nothing about them changes. With "Screenshot highlights" turned on the addon
--- also takes some itself: each new level, a boss's first defeat, the first time
--- in a zone or an instance, the first mount, the first death, and every death on
--- a Hardcore realm. Those lines say which moment it was, which tells them from
--- the player's.
+-- SHOT: the game saved a screenshot. The player's own are only noted. With
+-- "Screenshot highlights" on, the addon takes some itself: each new level, a
+-- boss's first defeat, the first time in a zone or an instance, the first mount,
+-- the first death, and every death on a Hardcore realm.
 --
--- For the length of one of its own shots the addon hides the social windows,
--- where friends' real names and BattleTags can show, and chat as well, whispers
--- included, unless "Show chat in the pictures" is on; and it draws a small mark
--- in the very corner of the screen, worked out from the character, the session
--- and the second. The game answers within about a tenth of a second and
--- everything goes back. Chat frames aren't protected, so this works in combat.
--- What is hidden is made transparent rather than hidden, which would disturb
--- how the windows are docked. The line says when chat was left in the picture.
+-- For its own shots it hides the social windows, and chat unless "Show chat in
+-- the pictures" is on, and draws a small mark in the corner, until the game
+-- answers; the line names the moment and says when chat was left in. Windows are
+-- made transparent rather than hidden, which would disturb chat docking, and
+-- chat frames aren't protected, so this works in combat.
 
 local _, WJ = ...
 
@@ -26,8 +21,7 @@ local HOLD_LIMIT = 30    -- s a shot can wait for a clear screen before it is gi
 local ANSWER_WAIT = 3    -- s before chat comes back if the game says nothing
 
 -- How long after the moment the picture is taken, and which wins when two fall
--- together: a boss's last blow is often the level-up too. A picture of a place
--- is about the place, so it holds off while the world map covers it.
+-- together. A picture of a place waits while the world map covers it.
 local MOMENTS = {
   death    = { wait = 1,   rank = 5 },
   boss     = { wait = 2,   rank = 4 },
@@ -37,7 +31,7 @@ local MOMENTS = {
   zone     = { wait = 3,   rank = 1, place = true },
 }
 
-local MARK_PATCHES, MARK_PIXELS = 4, 2   -- four patches, 2 by 2 pixels, each one of 64 colours
+local MARK_PATCHES, MARK_PIXELS = 4, 2
 local MARK_LEVELS = { 0, 85 / 255, 170 / 255, 1 }
 
 -- The parts Blizzard's code moves together with chat, and the buttons beside it.
@@ -47,9 +41,8 @@ local CHAT_SHARED_PARTS = {
   "ChatFrameMenuButton", "ChatFrameChannelButton", "ChatFrameToggleVoiceDeafenButton",
   "ChatFrameToggleVoiceMuteButton",
 }
--- The social windows, hidden whatever the settings say: the friends list with
--- its tooltip and friends-of-friends dialog, the guild and communities window,
--- which carries chat, and the Battle.net and whisper pop-ups, which name people.
+-- The social windows, hidden whatever the settings say: friends, communities,
+-- and the Battle.net and whisper pop-ups.
 local SOCIAL_PARTS = {
   "FriendsFrame", "FriendsTooltip", "FriendsFriendsFrame", "CommunitiesFrame",
   "BNToastFrame", "QuickJoinToastButton", "ChatAlertFrame",
@@ -115,8 +108,6 @@ end
 -- The mark
 ---------------------------------------------------------------------------
 
--- Plain arithmetic in floating point, with every step under 2^53, where such a
--- number is still exact, so the same sum comes out in any Lua.
 local function markCode(guid, session, second)
   local text = guid .. "|" .. string.format("%d", session) .. "|" .. string.format("%d", second)
   local h = 7.0
@@ -141,8 +132,7 @@ local function buildMark()
   end
 end
 
--- Sizes are one real pixel in the frame's own units, worked out each time in
--- case the window has changed.
+-- Sized in real pixels, worked out each time in case the window has changed.
 local function showMark()
   if not mark then buildMark() end
   local _, height = GetPhysicalScreenSize()
@@ -230,16 +220,14 @@ local function whenReady(moment, retries)
     C_Timer.After(1, WJ.guard("shot", function() whenReady(moment, retries - 1) end))
     return
   end
-  -- The game names a screenshot's file after the second it was taken in, so a
-  -- picture in the same second as one of the player's own would replace their
-  -- file. This one waits for the next second instead.
+  -- The game names a screenshot's file after its second, so one taken in the
+  -- same second as the player's own would replace theirs: wait a second.
   if ownShotSecond == time() then
     C_Timer.After(1, WJ.guard("shot", function() whenReady(moment, retries) end))
     return
   end
   pending = nil
-  -- Paused, nothing is recorded, so nothing is taken either; and the setting
-  -- may have been turned off while the picture waited.
+  -- Nothing is taken while paused, or if the setting was turned off meanwhile.
   if not WJ.isRecording() or not WJ.getIconSetting("screenshots") or taking or screenIsBusy(moment) then return end
   if moment.why == "zone" and realZone() ~= moment.key then return end
   take(moment)

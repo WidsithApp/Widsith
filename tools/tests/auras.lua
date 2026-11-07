@@ -135,14 +135,14 @@ end)
 test("a session that opens in a fight writes its auras a second after it, never the always-hidden one", function(game)
   game.login()
   game.advance(8)
-  game.slash("pause")
+  game.slash("stop")
   -- One aura's spell is always hidden; another is new to the session.
   game.world.present.HELPFUL[2] = { name = "Hidden", spellId = 99999, isHelpful = true, duration = 0, applications = 0, auraInstanceID = 250, alwaysHidden = true }
   game.world.present.HELPFUL[3] = { name = "Blessing of Kings", spellId = 20217, isHelpful = true, duration = 3600, applications = 0, auraInstanceID = 251 }
   game.world.combat = true
   game.world.fights[#game.world.fights + 1] = { sessionID = 93, name = "Riverpaw Runt", durationSeconds = 6 }
   game.world.meterDuration, game.world.meterTotal = 6, 50
-  game.slash("resume")
+  game.slash("start")
   game.advance(8)
   game.world.meterDuration, game.world.meterTotal = 14, 120
   game.world.combat = false

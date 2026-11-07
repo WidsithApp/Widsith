@@ -1,15 +1,11 @@
 -- Widsith — Position
 --
--- The only polled part of the recorder. Once per second: sample the player's
--- map position, write POS when it changed, NOPOS when it became unavailable,
--- MAPINFO the first time a map is seen in the session, and STATE when any of
--- the polled conditions (mounted, swimming, …) changed. Every TIMER_PERIOD
--- ticks, write the periodic lines (TIME, SNAP, COUNT, and with SNAP the
--- character sheet and the game's counters), never while a loading screen is up.
---
--- The tick also notices an instantaneous relocation (consecutive samples on
--- the same continent further apart than a character can travel) and reports
--- it to Extras.lua, which names the spell that preceded it (SPELL).
+-- The only polled part of the recorder. Once a second it samples the player's
+-- position and writes POS when it changed, NOPOS when it became unavailable,
+-- MAPINFO for a map new to the session, and STATE when a polled condition
+-- (mounted, swimming, …) changed. Every TIMER_PERIOD ticks it writes the
+-- periodic lines (TIME, SNAP, COUNT). A move too fast to be travel is reported
+-- to Extras.lua, which names the spell behind it (SPELL).
 
 local _, WJ = ...
 
@@ -26,8 +22,7 @@ local mapContinent = {}            -- mapID -> continentID from MAPINFO
 local ticks = 0
 local ticker
 
--- Faster than this between two samples is not travel: flight paths and
--- skyriding stay well under it.
+-- Faster than this between two samples is not travel.
 local RELOCATION_YARDS_PER_SEC = 150
 local lastWorld                    -- { wx, wy, continent, clock } of last POS
 
@@ -62,18 +57,10 @@ local function writeMapInfo(mapID)
 end
 
 ---------------------------------------------------------------------------
--- STATE: polled conditions, written on change. Each is the game's
--- own flag at the instant of the sample; a jump shorter than a second is
--- usually missed by `falling`, which is what 1 Hz sampling sees.
---
--- The game hides some of these from addons at times: UnitIsAFK is secret while
--- chat is restricted (an encounter, a Mythic+ run, a PvP match, and on maps
--- where chat is restricted, such as dungeons and raids; Blizzard's
--- UnitDocumentation.lua marks it SecretInChatMessagingLockdown). Testing a
--- secret as true or false raises an error, so every flag is checked with
--- issecretvalue() first, and a hidden flag is written as an empty field. The
--- line is compared as written, so one STATE marks where the hiding began and
--- another where it ended.
+-- STATE: the game's own flags at each sample, written on change.
+-- UnitIsAFK is secret while chat is restricted (UnitDocumentation.lua marks it
+-- SecretInChatMessagingLockdown), so every flag is checked with issecretvalue()
+-- first and a hidden one is written as an empty field.
 ---------------------------------------------------------------------------
 
 local lastStateKey
@@ -95,8 +82,7 @@ local function sampleState()
   local stealthed = flag(IsStealthed)
   local afk       = flag(UnitIsAFK, "player")
   local taxi      = flag(UnitOnTaxi, "player")
-  -- `falling` is written but doesn't trigger a line: it flips with nearly every landing after
-  -- a JUMP, which has a line of its own. The field keeps its place in the line.
+  -- `falling` is written but doesn't trigger a line: it flips at nearly every landing after a JUMP.
   -- Separated, since an empty field would otherwise shift the others along.
   local key = table.concat({ mounted, swimming, flying, indoors, stealthed, afk, taxi }, ",")
   if key ~= lastStateKey then
@@ -118,8 +104,7 @@ local function noteWorld(mapID, wx, wy)
       local dx, dy = wx - lastWorld.wx, wy - lastWorld.wy
       local dist = math.sqrt(dx * dx + dy * dy)
       if dist / dt > RELOCATION_YARDS_PER_SEC then
-        -- The move happened after the previous sample: that is where Extras.lua
-        -- starts looking for the cast behind it.
+        -- The move happened after the previous sample, so the cast is looked for from there.
         WJ.onRelocation("jump", dist, lastWorld.clock)
       end
     end
@@ -139,18 +124,14 @@ local function samplePosition()
 
   if x then
     local xs, ys = WJ.coord(x), WJ.coord(y)
-    -- Standing still is still a sample: the relocation check below measures from the last
-    -- tick that saw the character, not the last POS written, or a teleport cast while
-    -- standing (every hearthstone) would be too far from its last line to be noticed.
+    -- Standing still is still a sample: the relocation check measures from the last
+    -- tick that saw the character, not the last POS written.
     if lastWorld and mapID == lastMapID and xs == lastX and ys == lastY then
       lastWorld.clock = GetTime()
     end
     if mapID ~= lastMapID or xs ~= lastX or ys ~= lastY then
-      -- World coordinates too: continuous across map changes. UnitPosition's
-      -- first two returns are in the same order as the vector from
-      -- GetWorldPosFromMapPos (MAPINFO): north-south first, then east-west.
-      -- nil wherever map position is nil. The third return (height) is always 0
-      -- and is kept only so the line's shape doesn't change.
+      -- World coordinates too, continuous across map changes, in the same order as
+      -- GetWorldPosFromMapPos (north-south first). The height is always 0.
       local wx, wy, wz = UnitPosition("player")
       noteWorld(mapID, wx, wy)
       WJ.write("POS", mapID, xs, ys,
@@ -169,24 +150,14 @@ local function samplePosition()
 end
 
 ---------------------------------------------------------------------------
--- The periodic lines. While a loading screen is up the client is still
--- loading the character: a reading taken then has the level but no money, no
--- experience to the next level, no map and every gear slot empty. A tick
--- inside a loading screen leaves the lines due, and the first tick after the
--- screen writes them, a few seconds late; the next fall due at their usual
--- tick. The screen is known from LOADING_SCREEN_ENABLED and
--- LOADING_SCREEN_DISABLED (Extras.lua hears both). Should the client ever not
--- report a screen's end, it stops holding the lines back after a period.
+-- The periodic lines. A tick during a loading screen leaves them due for the
+-- first tick after it, unless the screen has been up longer than a period.
 ---------------------------------------------------------------------------
 
 local periodicDue = false
 local loadingSince   -- GetTime() when the loading screen now up appeared; nil when none is
 
--- The end of a screen also writes LOADSCREEN seconds: how long it was up, to a
--- tenth of a second. GetTime() is the computer's uptime, not the game's, so it
--- runs on through the screen; it is updated once a frame. At a login or a
--- reload the addon loads inside the screen and never hears it begin, so that
--- one has no line.
+-- The end of a loading screen writes LOADSCREEN, how long it was up in seconds.
 function WJ.onLoadingScreen(shown)
   if not shown and loadingSince then
     WJ.write("LOADSCREEN", string.format("%.1f", GetTime() - loadingSince))
@@ -205,8 +176,7 @@ local function writePeriodic()
   WJ.snapshot()
 end
 
--- Each part guarded on its own: whatever goes wrong in one is named in its ERR
--- line and costs neither of the others.
+-- Each part guarded on its own: an error in one is its own ERR line and the others still run.
 local samplePositionGuarded = WJ.guard("tick", samplePosition)
 local sampleStateGuarded    = WJ.guard("state", sampleState)
 local writePeriodicGuarded  = WJ.guard("periodic", writePeriodic)
@@ -231,10 +201,8 @@ function WJ.startTicker()
   ticker = C_Timer.NewTicker(1, WJ.guard("tick", tick))
 end
 
--- On any PLAYER_ENTERING_WORLD forget the last sample so the next tick writes
--- a fresh POS or NOPOS for the new place. MAPINFO's seen-set is per session
--- and deliberately not reset. A loading screen also breaks the relocation
--- check: Events.lua reports that transition itself.
+-- On any PLAYER_ENTERING_WORLD forget the last sample, so the next tick writes a
+-- fresh POS or NOPOS; maps seen stay seen for the session.
 function WJ.onEnteringWorldPosition()
   posAvailable = nil
   lastMapID, lastX, lastY = nil, nil, nil

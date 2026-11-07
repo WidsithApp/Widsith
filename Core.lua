@@ -1,20 +1,14 @@
 -- Widsith — Core
 --
--- Session lifecycle, the line writer, chunked storage into SavedVariables,
--- and the /widsith command.
---
--- The recording is a list of sessions (one per login, reload or resume), each
--- a list of text lines: "<ms since session start> <TYPE> <fields…>", tab
--- separated. Every line is a fact the game stated, with IDs rather than names
--- wherever the game gives one; names ride along only as labels. This file is
--- the only place that knows how lines are laid out in the saved file.
+-- Session lifecycle, the line writer, chunked storage into SavedVariables and
+-- the /widsith command. The recording is a list of sessions (one per login,
+-- reload or start), each a list of tab-separated lines:
+-- "<ms since session start> <TYPE> <fields…>".
 
 local ADDON_NAME, WJ = ...
 _G.Widsith = WJ
 
--- What namespace.name(...) returns, or nothing when the client lacks the
--- namespace or the function, or the call throws: the one way of calling an API
--- a client may not have. /widsith check names the ones this client lacks.
+-- Calls namespace.name(...), returning nothing when the client lacks it or the call throws.
 local function pass(ok, ...)
   if ok then return ... end
 end
@@ -31,10 +25,8 @@ WJ.VERSION       = WJ.gameCall("C_AddOns", "GetAddOnMetadata", ADDON_NAME, "Vers
 WJ.CHUNK_LINES   = 256
 WJ.TIMER_PERIOD  = 300   -- seconds between TIME / SNAP / COUNT lines
 
--- Which client this is. WoW Forever runs the Mainline client and API with a
--- Classic-range interface number (16001 on 1.60.1). Its WOW_PROJECT_ID was
--- Mainline's (1) on its early builds and is 18 from build 70205 on; the Classic
--- flavours, whose interface numbers are in the same range, have IDs of their own.
+-- WoW Forever runs the Mainline client with a Classic-range interface number, and
+-- reports Mainline's WOW_PROJECT_ID (1) on some builds and 18 on others.
 local FOREVER_PROJECTS = { [WOW_PROJECT_MAINLINE or 1] = true, [18] = true }
 WJ.INTERFACE = select(4, GetBuildInfo()) or 0
 WJ.isForever = FOREVER_PROJECTS[WOW_PROJECT_ID] == true and WJ.INTERFACE < 100000
@@ -46,16 +38,13 @@ WJ.isForever = FOREVER_PROJECTS[WOW_PROJECT_ID] == true and WJ.INTERFACE < 10000
 local issecretvalue = issecretvalue
 local floor, format, tostring, type = math.floor, string.format, tostring, type
 
--- Turn any Lua value into a field string. Secrets, nils and unknown types
--- become the empty field so a line never fails to write.
+-- Turn any Lua value into a field string; secrets, nils and unknown types become empty.
 local function field(v)
   if v == nil then return "" end
   if issecretvalue and issecretvalue(v) then return "" end
   local t = type(v)
   if t == "number" then
-    -- Whole numbers through %.0f, not %d: the client's %d may be 32-bit, which would wrap
-    -- money above ~214,748 gold. %.0f is exact to 2^53 and never uses exponent notation.
-    -- Zero is spelled out so a negative zero can't become "-0".
+    -- %.0f rather than %d, which may be 32-bit; zero is spelled out so it never prints "-0".
     if v == 0 then return "0" end
     if v % 1 == 0 then return format("%.0f", v) end
     return format("%.4f", v)
@@ -90,8 +79,8 @@ local session            -- current session table inside db.sessions
 local buffer = {}        -- lines not yet packed into a chunk
 local lastEquipStrings   -- the worn items' strings as last written with a SNAP this session
 local startClock         -- GetTime() at session start: the origin of the lines' times
-local loadClock = GetTime()  -- when this addon load began: the game wrote the file at the logout or reload before it
-local paused = false     -- see WJ.pause(); declared here so WJ.health() sees it
+local loadClock = GetTime()  -- when this addon load began: the file was written at the logout or reload before it
+local paused = false     -- true while recording is stopped
 local previousOnFile     -- what the file held of the session before this load's first, for debug mode
 local counts = { pos = 0, kills = 0, loot = 0, xp = 0, quests = 0, deaths = 0, jumps = 0, shots = 0, emotes = 0 }
 WJ.counts = counts
@@ -108,9 +97,7 @@ local function flush()
   buffer = {}
 end
 
--- The recording's size: the lines' own bytes, on file and waiting in memory,
--- before the game's wrapping of the saved file. One session's when given,
--- otherwise everything's.
+-- The bytes of line text recorded, for one session or, without one, for all of them.
 local function estimateBytes(one)
   local total = 0
   for _, s in ipairs(db.sessions) do
@@ -146,9 +133,7 @@ function WJ.sessionStartedAt()
   return session and session.startedAt
 end
 
--- The file was last written by the logout or reload that began this load, so
--- everything recorded since then is unsaved (Save.lua's reminder), through a
--- pause as much as a session: a resume starts a session and writes nothing.
+-- Seconds since the file was last written, at the logout or reload that began this load.
 function WJ.secondsSinceSave()
   return GetTime() - loadClock
 end
@@ -161,13 +146,19 @@ local PREFIX = WJ.PREFIX
 local errorCount = 0
 local answering = false   -- true while a /widsith command the player typed is running
 
--- The recorder's own news (a session starting, a pause), which the player can switch off
--- in the icon's menu. WidsithUI is that menu's settings table; it is created when the
--- addon loads, after this file has run, so it is looked up each time. The answer to a
--- command the player typed always shows.
-function WJ.say(text)
-  local ui = WidsithUI
-  if answering or ui == nil or ui.chat ~= false then print(PREFIX .. text) end
+-- The recorder's own news, which "Show chat messages" silences; a typed command's answer
+-- always shows. bare: the text carries its own heading.
+function WJ.say(text, bare)
+  local settings = WJ.settings
+  if answering or settings == nil or settings.chat ~= false then print(bare and text or (PREFIX .. text)) end
+end
+
+-- News as a load begins, headed by the flame and the name.
+WJ.EMBLEM = "|TInterface\\AddOns\\" .. ADDON_NAME .. "\\media\\flame-chat:16:16|t"
+-- The icon as it sits by the minimap, the flame on its disc, for a line that names it.
+WJ.ICON = "|TInterface\\AddOns\\" .. ADDON_NAME .. "\\media\\emblem:16:16|t"
+function WJ.announce(text)
+  WJ.say(WJ.EMBLEM .. " " .. PREFIX .. text, true)
 end
 
 -- A real problem, which always shows.
@@ -186,7 +177,7 @@ end
 
 -- ok, message. Position.lua publishes tickClock / tickHasPos / lastPosHasWorld.
 function WJ.health()
-  if paused then return true, "recording is paused. Resume it from the icon or with /widsith resume." end
+  if paused then return true, "recording is stopped. Start it from the icon or with /widsith start." end
   if not session then return false, "no session was started, so nothing is being recorded." end
   if WJ.savesNotLoaded then
     return false, "the game didn't load the earlier recording, so this reload replaced it in the file."
@@ -220,9 +211,8 @@ end
 -- Character identity (refreshed every session)
 ---------------------------------------------------------------------------
 
--- The character's surname. On WoW Forever every character has one, and the game gives it as
--- UnitName's second value ("Aldwin", "Thornby"); Retail gives none for the player. Kept only
--- as a plain string: a secret or an empty value is left out.
+-- The surname WoW Forever gives as UnitName's second value (Retail gives none for the
+-- player); a secret or empty value is left out.
 local function surnameOf(unit)
   local _, surname = UnitName(unit)
   if type(surname) ~= "string" or (issecretvalue and issecretvalue(surname)) or surname == "" then
@@ -256,8 +246,7 @@ function WJ.isPaused()
   return paused
 end
 
--- isResume: started from the icon or /widsith resume after a pause, inside
--- the same addon load. Anything else is a login or a reload.
+-- isResume: started again after a stop, within the same addon load.
 function WJ.startSession(isLogin, isReload, isResume)
   if session then return end
   paused = false
@@ -265,8 +254,7 @@ function WJ.startSession(isLogin, isReload, isResume)
   local serverTime = GetServerTime()
   local previous = db.sessions[#db.sessions]
   local onFile = estimateBytes()   -- what the file held before this session, for its SESSION line
-  -- A counter of its own, so pruning old sessions from the file can never make a later
-  -- session's id repeat an earlier one's (the id is serverTime-ordinal).
+  -- A counter of its own, so pruning old sessions never makes an id repeat.
   db.nextSession = (db.nextSession or #db.sessions) + 1
   local ordinal = db.nextSession
   session = {
@@ -277,8 +265,7 @@ function WJ.startSession(isLogin, isReload, isResume)
     chunks    = {},
     encoding  = "raw",
   }
-  -- Appended, never indexed by the counter: once old sessions can be pruned the counter
-  -- runs ahead of the array, and a gap would break #, ipairs and "the last session".
+  -- Appended, not indexed by the counter, which runs ahead of the array once sessions are pruned.
   db.sessions[#db.sessions + 1] = session
   db.character = describeCharacter()
   for k in pairs(counts) do counts[k] = 0 end
@@ -289,38 +276,42 @@ function WJ.startSession(isLogin, isReload, isResume)
     WOW_PROJECT_ID, GetLocale(), isLogin, isReload, UnitGUID("player"), isResume and true or nil, onFile)
 
   WJ.requestTimePlayed()
-  -- Equipment (and some unit data) isn't loaded yet at PLAYER_ENTERING_WORLD;
-  -- the opening snapshot waits for it.
+  -- Equipment isn't loaded yet at PLAYER_ENTERING_WORLD, so the opening snapshot waits.
   C_Timer.After(5, WJ.guard("openingState", WJ.openingState))
   WJ.startTicker()
 
   if isResume then
-    WJ.say("recording resumed.")
+    WJ.say("recording started.")
   else
-    -- The previous session can only be here if it made the round trip through
-    -- the SavedVariables file, so it shows that saving works (in debug mode).
+    -- What the file holds of the previous session, for debug mode.
     previousOnFile = "no earlier sessions on file."
     if previous then
       previousOnFile = format("previous session on file: %s%s.", count(previous.lines or 0, "line", "lines"),
         previous.closed and "" or ", |cffff4444not closed cleanly|r")
     end
-    if isLogin then
-      WJ.say(WJ.VERSION .. " is recording. Type /widsith help for commands.")
+    -- A welcome or a version's news (Welcome.lua) takes this line's place when due.
+    local newsSaid = false
+    if WJ.tellNews then
+      local ok, said = pcall(WJ.tellNews)
+      if ok then newsSaid = said == true else WJ.recordError("welcome", said) end
+    end
+    if newsSaid then
+      -- said by the news
+    elseif isLogin then
+      WJ.announce(WJ.VERSION .. " is recording. Type /widsith help for commands.")
     else
-      WJ.say("is recording.")
+      WJ.announce("is recording.")
     end
     if WJ.debug then print(PREFIX .. previousOnFile) end
   end
-  -- The icon lights now, not when its own frame hears the event (the order
-  -- frames receive one isn't promised).
+  -- The icon lights now, since the order frames hear an event in isn't promised.
   if WJ.onRecordingStarted then WJ.guard("recordingStarted", WJ.onRecordingStarted)() end
   C_Timer.After(10, WJ.guard("health", WJ.printHealth))
 end
 
 function WJ.endSession(reason)
   if not session then return end
-  -- A money change still waiting for its frame goes in before the end (Events.lua),
-  -- under its own guard, so a fault there can't keep the session from closing.
+  -- A money change still waiting goes in before the end (Events.lua), under its own guard.
   if WJ.flushMoney then WJ.guard("money", WJ.flushMoney)() end
   WJ.write("END", GetServerTime(), reason)
   flush()
@@ -328,32 +319,37 @@ function WJ.endSession(reason)
   session = nil
 end
 
--- Pause: close this session with END … pause and record nothing until
--- Resume, which opens a new session with a fresh baseline. A pause never
--- outlives the addon load: the next login or reload records as always, so it
--- can't be forgotten for longer than one sitting.
+-- Stop: close the session and record nothing on this character, across logins, until
+-- Start opens a new one. The code and the END line's reason say "pause".
 function WJ.pause()
   if not session then return end
   WJ.endSession("pause")
   paused = true
-  WJ.say("recording paused. Nothing is recorded until you resume, log in again or reload.")
+  WidsithUI.paused = true
+  WJ.say("recording stopped on this character until you start it again, from the icon or with /widsith start.")
 end
 
 function WJ.resume()
   if session then return end
+  WidsithUI.paused = nil
   WJ.startSession(false, false, true)
   if WJ.onResume then WJ.guard("resume", WJ.onResume)() end
 end
 
+-- A login or a reload on a stopped character: nothing starts, and the player is told.
+local function stayPaused()
+  paused = true
+  if WJ.tellNews then WJ.guard("welcome", WJ.tellNews)() end
+  WJ.announce("is not recording on this character. Start recording from the icon or with /widsith start.")
+  if WJ.onRecordingStarted then WJ.guard("recordingStarted", WJ.onRecordingStarted)() end
+end
+
 ---------------------------------------------------------------------------
--- Played time. RequestTimePlayed() echoes to chat; the
--- echo is swallowed once per request, the way most addons do it.
+-- Played time. RequestTimePlayed() echoes to chat; the echo is swallowed.
 ---------------------------------------------------------------------------
 
--- Every chat window that shows system messages calls this once per reply, so
--- suppress by time window rather than by count. The client's chat code calls
--- ChatFrameUtil.DisplayTimePlayed (ChatFrameOverrides.lua); older clients the
--- global ChatFrame_DisplayTimePlayed. Whichever exists is wrapped.
+-- Each chat window showing system messages calls this once per reply, so it is muted for a
+-- time, not a count. ChatFrameUtil.DisplayTimePlayed (ChatFrameOverrides.lua), or the older global.
 local suppressUntil = 0
 local function wrapTimePlayed(holder, key)
   if type(holder) ~= "table" then return end
@@ -380,9 +376,7 @@ end
 local EQUIP_SLOTS = 19
 WJ.EQUIP_SLOTS = EQUIP_SLOTS
 
--- A quest log entry the player would call a quest: not a header, and not one of the hidden
--- tracking quests the client keeps in the log ("Level 3", "Level 13" … seen in the game),
--- which never show in the game's own log.
+-- A quest the game's log shows: not a header, nor a hidden tracking quest the client keeps there.
 function WJ.isQuestEntry(info)
   return info and not info.isHeader and not info.isHidden and info.questID
 end
@@ -408,9 +402,7 @@ local function equipIDs()
   return ids
 end
 
--- A worn item as the game links it: the item string, with the enchant, gems,
--- suffix, bonus IDs and upgrade context that make the worn copy the item it
--- is. Empty for an empty slot, or one the game hides.
+-- A worn item's string, with its enchant, gems and bonus IDs; empty for an empty or hidden slot.
 function WJ.equipString(slot)
   if type(GetInventoryItemLink) ~= "function" then return "" end
   local link = GetInventoryItemLink("player", slot)
@@ -425,16 +417,12 @@ local function equipStrings()
   return strings
 end
 
--- opening: the session's opening snapshot, whose durability read is where
--- watching for broken gear starts (Events.lua).
+-- opening: the session's first snapshot, where watching durability begins (Events.lua).
 function WJ.snapshot(opening)
-  -- Experience or money the game changed without an event the addon heard is written
-  -- as its own line first (Events.lua), so the snapshot never says more than the lines
-  -- before it. Under a guard of its own, so a fault there can't cost the snapshot.
+  -- Experience or money changed without an event goes in first (Events.lua), under its own guard.
   if WJ.catchUpProgress then WJ.guard("catchUp", WJ.catchUpProgress)(true) end
   local mapID, x, y = WJ.currentPosition()
-  -- The worn items' strings go with the first snapshot of a session and then
-  -- only when they differ from the last written: a quiet session costs nothing.
+  -- The worn items' strings go only when they differ from the last written this session.
   local strings = WJ.list(equipStrings())
   local changed = strings ~= lastEquipStrings
   lastEquipStrings = strings
@@ -451,32 +439,23 @@ function WJ.snapshot(opening)
   if WJ.readTallies then WJ.readTallies(true) end
 end
 
--- The opening snapshot plus the state that has no change event of its own
--- yet in this session: quest titles (QLABEL), professions (SKILL), reputations (REP), currencies (CURRENCY), spec,
--- talents, gear sets, hearth location, the weather and the time of day, the rules played under,
--- auras and the game's counters. Written once the client has loaded that data.
--- Each step under a guard of its own, so whatever goes wrong in one is named
--- and the rest is still written: none depends on another.
+-- The opening snapshot plus the state that has no change event of its own, written once
+-- the client has loaded it. Each step has its own guard, since none depends on another.
 function WJ.openingState()
   WJ.guard("snapshot", WJ.snapshot)(true)
   if WJ.writeOpeningWorld then WJ.guard("openingWorld", WJ.writeOpeningWorld)() end
   if WJ.writeQuestLabels then WJ.guard("questLabels", WJ.writeQuestLabels)() end
-  -- The quest log's state as the session begins (Events.lua): the cache seeded, the quests
-  -- already ready to turn in written as such.
+  -- The quest log's opening state (Events.lua), with quests already ready to turn in.
   if WJ.diffQuestLog then WJ.guard("questLog", WJ.diffQuestLog)(true, true) end
   if WJ.writeOpeningExtras then WJ.guard("openingExtras", WJ.writeOpeningExtras)() end
   if WJ.writeOpeningMoments then WJ.guard("openingMoments", WJ.writeOpeningMoments)() end
 end
 
 ---------------------------------------------------------------------------
--- Errors. One misbehaving handler, hook or timer (a secret value where none
--- was expected, an API that changed shape) must never stop the recording or
--- show the player an error popup. The failure itself is recorded as ERR,
--- rate-limited so a persistent fault can't flood.
+-- Errors: a failing handler, hook or timer is written as ERR and recording carries on.
 ---------------------------------------------------------------------------
 
--- The fault as the recording keeps it: an ERR line, at most twenty a load, and the
--- details in chat while debug is on. True when it is the first this load.
+-- Writes an ERR line, at most twenty a load; true for the load's first fault.
 local function noteError(where, err)
   errorCount = errorCount + 1
   if errorCount <= 20 then
@@ -486,8 +465,7 @@ local function noteError(where, err)
   return errorCount == 1
 end
 
--- A fault in a handler, hook or timer: noted, and said once a load, since the
--- player asked for nothing and a fault that repeats would fill their chat.
+-- A fault in a handler, hook or timer: noted, and said in chat once a load.
 function WJ.recordError(where, err)
   if noteError(where, err) then
     WJ.warn("something went wrong while recording (" .. tostring(where) .. "). " .. WJ.NAME ..
@@ -500,23 +478,18 @@ local function run(where, fn, ...)
   if not ok then WJ.recordError(where, err) end
 end
 
--- The same guard for code that runs outside an event handler: hook bodies and
--- C_Timer callbacks. `where` names it in the ERR line.
+-- The same guard for hook bodies and C_Timer callbacks; `where` names it in the ERR line.
 function WJ.guard(where, fn)
   return function(...) run(where, fn, ...) end
 end
 
--- A fault in something the player asked for, a typed command or a click: noted
--- like any other, and always answered, in plain words and never as a raw error,
--- since the player is waiting.
+-- A fault in a command or click: noted, and always answered in plain words.
 local function answerFault(where, err)
   noteError(where, err)
   WJ.warn("that didn't work. " .. WJ.NAME .. " keeps recording; /widsith debug shows the details.")
 end
 
--- The guard for the player's own actions: what the icon, its menu, the reminder
--- and the settings panel run. Each action wraps itself where it is defined, so
--- every button and menu item that calls it is covered.
+-- The guard for the player's own actions, wrapped where each action is defined.
 function WJ.attempt(where, fn)
   return function(...)
     local ok, err = pcall(fn, ...)
@@ -524,16 +497,41 @@ function WJ.attempt(where, fn)
   end
 end
 
--- The game started this load without the recording file (see the boot below).
--- Written into the recording, said once in chat, and the save reminder stops:
--- while the client can't read the file back, every reload replaces it. (Early
--- WoW Forever builds wrote saved variables but never read them back.)
+-- The game started this load without the recording file: written as ERR and said in chat.
 function WJ.noteSavesNotLoaded()
   WJ.savesNotLoaded = true
   WJ.write("ERR", "savedvariables", "empty at reload: the game did not load the recording file")
   WJ.warn("the game didn't load the earlier recording at this reload, so the file now holds only " ..
     "what is recorded from here on. To keep it, copy " .. ADDON_NAME .. ".lua out of SavedVariables " ..
     "before each reload or logout.")
+end
+
+---------------------------------------------------------------------------
+-- The saved tables
+---------------------------------------------------------------------------
+
+-- WidsithDB is the character's recording, WidsithUI the character's own state and
+-- WidsithAccount the account's settings. Settings a character kept before the account had
+-- any become the account's, and the account then knows it was in use before.
+local SETTING_KEYS = { "shown", "remind", "animate", "chat", "emote", "onRing", "locked", "iconSize",
+  "screenshots", "shotsChat", "point", "ringAngle", "iconStyle" }
+
+function WJ.loadSettings()
+  if WJ.settings then return WJ.settings end
+  WidsithAccount = WidsithAccount or {}
+  WidsithUI = WidsithUI or {}
+  if not WidsithAccount.settings then
+    WidsithAccount.settings = {}
+    if WidsithUI.iconStyle ~= nil then
+      for _, key in ipairs(SETTING_KEYS) do
+        WidsithAccount.settings[key] = WidsithUI[key]
+      end
+      WidsithAccount.usedBefore = true
+    end
+  end
+  for _, key in ipairs(SETTING_KEYS) do WidsithUI[key] = nil end
+  WJ.settings = WidsithAccount.settings
+  return WJ.settings
 end
 
 ---------------------------------------------------------------------------
@@ -554,6 +552,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
     db.format   = WJ.FORMAT
     db.sessions = db.sessions or {}
     WJ.db = db
+    run("settings", WJ.loadSettings)
     WJ.registerEvents(self)
     if WJ.installHooks then run("hooks", WJ.installHooks) end
     if WJ.installMoneyHooks then run("money hooks", WJ.installMoneyHooks) end
@@ -561,11 +560,13 @@ frame:SetScript("OnEvent", function(self, event, ...)
   elseif event == "PLAYER_ENTERING_WORLD" then
     local isLogin, isReload = ...
     if isLogin or isReload then
-      -- A reload always follows a session of this game launch, so an empty file here
-      -- means the client didn't read it back, or the addon was only just enabled.
-      -- Either way the file is about to lose what it had.
+      -- An empty file at a reload: the game didn't read it back, or the addon was just enabled.
       local savesNotLoaded = isReload and #db.sessions == 0
-      run("session", WJ.startSession, isLogin, isReload)
+      if WidsithUI.paused then
+        run("session", stayPaused)
+      else
+        run("session", WJ.startSession, isLogin, isReload)
+      end
       if savesNotLoaded then WJ.noteSavesNotLoaded() end
     end
     run(event, WJ.onEnteringWorld, isLogin, isReload)
@@ -583,8 +584,7 @@ end)
 -- /widsith
 ---------------------------------------------------------------------------
 
--- /widsith check: what this client is and what it lacks of what the recorder
--- uses. Every missing piece is already skipped quietly; this only says which.
+-- /widsith check: names the client and what it lacks of the APIs the recorder uses.
 
 local USED_APIS = {
   "C_Map.GetBestMapForUnit", "C_Map.GetPlayerMapPosition", "C_Map.GetMapInfo", "C_Map.GetWorldPosFromMapPos",
@@ -633,11 +633,7 @@ local USED_APIS = {
   "C_StableInfo.BuyStableSlot", "C_StableInfo.GetNextStableSlotCost",
 }
 
--- What each client is known to be without, of the functions and events above, so the check
--- can tell an expected absence from one that would be news: WoW Forever has no specialization
--- global (its C_SpecializationInfo has the call); Retail 12.1.5 has none of Forever's rules,
--- preset, defence skill, Skills tab, spec groups, day and night, or stable. Read in the game on
--- Retail 12.1.5 build 70783 and WoW Forever 1.60.1 build 70840, where no event was missing.
+-- What each client is known to lack, so the check lists only the unexpected absences.
 local KNOWN_ABSENT = {
   forever = { functions = { "GetSpecialization" }, events = {} },
   retail = {
@@ -696,9 +692,8 @@ function WJ.printClientCheck()
   if WJ.savesNotLoaded then print(PREFIX .. "the game didn't load the recording file at the last reload.") end
 end
 
--- Where the game writes the file. Under WTF\Account\<account>\ it makes a folder per realm and,
--- in it, one per character; on WoW Forever the realm's folder is a number that is the same for
--- every one of its realms, which no call names, and the character's folder carries the surname.
+-- Where the game writes the file. On WoW Forever the realm folder is a number no call names,
+-- and the character folder carries the surname.
 local function fileLocation()
   local name, surname = UnitName("player")
   local character = name or "?"
@@ -721,7 +716,7 @@ local function printStatus()
       count((session.lines or 0) + #buffer, "line", "lines"), count(counts.kills, "kill", "kills"),
       count(counts.quests, "quest", "quests"), onFile))
   elseif paused then
-    print(format("%s%s is paused; resume it from the icon or with /widsith resume. %s", PREFIX, WJ.VERSION, onFile))
+    print(format("%s%s is stopped; start recording from the icon or with /widsith start. %s", PREFIX, WJ.VERSION, onFile))
   else
     print(format("%s%s isn't recording. %s", PREFIX, WJ.VERSION, onFile))
   end
@@ -739,8 +734,8 @@ local HELP = {
   { "help", "shows this list." },
   { "about", "says what " .. WJ.NAME .. " is." },
   { "size", "says how big the recording is, and which sessions are the largest." },
-  { "pause", "stops recording until you resume, log in again or reload." },
-  { "resume", "starts recording again." },
+  { "stop", "stops recording on this character until you start it again." },
+  { "start", "starts recording again." },
   { "save", "reloads the interface, which writes the recording to disk." },
   { "icon", "shows or hides the recording icon." },
   { "options", "opens the settings panel." },
@@ -806,23 +801,21 @@ local function handleCommand(msg)
   elseif cmd == "check" then
     WJ.printClientCheck()
   elseif cmd == "save" then
-    -- WoW only writes SavedVariables on logout or UI reload; there is no
-    -- other way to force it. A crash loses everything since the last write.
-    -- The same save as the icon's (Save.lua), with the same refusals.
+    -- WoW writes SavedVariables only at logout or reload; this is the icon's save (Save.lua).
     if WJ.saveNow then WJ.saveNow() end
   elseif cmd == "icon" then
     if WJ.setIconShown then WJ.setIconShown(not WJ.iconShown()) end
   elseif cmd == "options" then
     if WJ.openOptions then WJ.openOptions() else print(PREFIX .. "this game client has no settings panel for addons.") end
-  elseif cmd == "pause" then
+  elseif cmd == "stop" then
     if session then
       WJ.pause()
     elseif paused then
-      print(PREFIX .. "recording is already paused.")
+      print(PREFIX .. "recording is already stopped.")
     else
-      print(PREFIX .. "isn't recording, so there is nothing to pause.")
+      print(PREFIX .. "isn't recording, so there is nothing to stop.")
     end
-  elseif cmd == "resume" then
+  elseif cmd == "start" then
     if session then
       print(PREFIX .. "is already recording.")
     else
@@ -858,7 +851,7 @@ SLASH_WIDSITH1 = "/widsith"
 SlashCmdList.WIDSITH = function(msg)
   answering = true
   local ok, err = pcall(handleCommand, msg or "")
-  -- The player typed it and is waiting: answered as any action of theirs.
+  -- Answered like any other action of the player's.
   if not ok then answerFault("command", err) end
   answering = false
 end

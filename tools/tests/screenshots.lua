@@ -9,11 +9,13 @@
 -- chat and the friends list were at that instant, and answers with game.world.shotAnswer (nil
 -- says nothing at all). Chat starts at 0.8 and the friends list at 1.
 
--- Logged in, settled, with highlights turned on.
+-- Logged in, settled, with highlights on and chat hidden for the pictures: the tests here play
+-- the hidden case, and the one that leaves chat in says so itself.
 local function withHighlights(game)
   game.login()
   game.advance(8)
   game.addon.setIconSetting("screenshots", true)
+  game.addon.setIconSetting("shotsChat", false)
 end
 
 local function shots(game, wanted, what)
@@ -27,6 +29,7 @@ end
 test("with the setting off, a level takes no picture", function(game)
   game.login()
   game.advance(8)
+  game.addon.setIconSetting("screenshots", false)
   levelUp(game, 6)
   game.advance(2)
   shots(game, 0, "with the setting off")

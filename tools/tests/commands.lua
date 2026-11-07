@@ -157,14 +157,14 @@ test("/widsith alone with debug on names the file's folders as the game names th
   eq(said[4], "Widsith type /widsith help for commands.", "the status's last line")
 end)
 
-test("/widsith alone while paused says so, and how to resume", function(game)
+test("/widsith alone while stopped says so, and how to start", function(game)
   game.login()
   game.advance(8)
-  game.slash("pause")
+  game.slash("stop")
   local from = #game.chat
   game.slash("")
   local said = chatSince(game, from)
-  expect(said[1] and said[1]:find("^Widsith " .. game.version:gsub("%.", "%%.") .. " is paused; resume it from the icon or with /widsith resume%. 1 session on file, about %d+ KB%.$"),
+  expect(said[1] and said[1]:find("^Widsith " .. game.version:gsub("%.", "%%.") .. " is stopped; start recording from the icon or with /widsith start%. 1 session on file, about %d+ KB%.$"),
     "the paused status line: " .. tostring(said[1]))
 end)
 
@@ -173,8 +173,8 @@ local HELP = {
   "Widsith /widsith help shows this list.",
   "Widsith /widsith about says what Widsith is.",
   "Widsith /widsith size says how big the recording is, and which sessions are the largest.",
-  "Widsith /widsith pause stops recording until you resume, log in again or reload.",
-  "Widsith /widsith resume starts recording again.",
+  "Widsith /widsith stop stops recording on this character until you start it again.",
+  "Widsith /widsith start starts recording again.",
   "Widsith /widsith save reloads the interface, which writes the recording to disk.",
   "Widsith /widsith icon shows or hides the recording icon.",
   "Widsith /widsith options opens the settings panel.",
@@ -225,8 +225,8 @@ test("/widsith size gives the total and the three largest sessions, this one mar
   -- Four sessions: three closed by pauses, the fourth recording. Each runs a different time,
   -- so their sizes differ.
   for i = 1, 3 do
-    game.slash("pause")
-    game.slash("resume")
+    game.slash("stop")
+    game.slash("start")
     game.advance(8 + 60 * i)
   end
   eq(#game.G.WidsithDB.sessions, 4, "sessions on file after three pauses")
@@ -256,30 +256,30 @@ end)
 -- pause, resume, debug, flush
 ---------------------------------------------------------------------------
 
-test("/widsith pause pauses, and a second pause says it already is", function(game)
+test("/widsith stop stops, and a second stop says it already is", function(game)
   game.login()
   game.advance(8)
-  game.slash("pause")
+  game.slash("stop")
   expect(not game.addon.isRecording(), "still recording after /widsith pause")
-  expect(game.said("recording paused. Nothing is recorded until you resume, log in again or reload."), "the pause wasn't said")
+  expect(game.said("recording stopped on this character until you start it again, from the icon or with /widsith start."), "the stop wasn't said")
   eq(game.last("END").fields[2], "pause", "the END line's reason")
   local from = #game.chat
-  game.slash("pause")
-  same(chatSince(game, from), { "Widsith recording is already paused." }, "a second pause")
+  game.slash("stop")
+  same(chatSince(game, from), { "Widsith recording is already stopped." }, "a second stop")
   eq(#game.lines("END"), 1, "END lines after two pauses")
 end)
 
-test("/widsith resume while recording says so; after a pause it starts a new session", function(game)
+test("/widsith start while recording says so; after a stop it starts a new session", function(game)
   game.login()
   game.advance(8)
   local from = #game.chat
-  game.slash("resume")
+  game.slash("start")
   same(chatSince(game, from), { "Widsith is already recording." }, "resume while recording")
   eq(#game.written, 1, "sessions after a resume while recording")
-  game.slash("pause")
-  game.slash("resume")
+  game.slash("stop")
+  game.slash("start")
   expect(game.addon.isRecording(), "not recording after /widsith resume")
-  expect(game.said("recording resumed."), "the resume wasn't said")
+  expect(game.said("recording started."), "the start wasn't said")
   eq(#game.written, 2, "sessions after a pause and a resume")
   eq(game.written[2].lines[1].kind, "SESSION", "the resumed session's first line")
 end)

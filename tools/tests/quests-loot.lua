@@ -80,9 +80,9 @@ test("a quest already ready as a session begins is written as the opening state 
   game.login()
   game.advance(8)
   -- A pause and a resume make a second session, which opens on the same baseline as a reload.
-  game.slash("pause")
+  game.slash("stop")
   game.advance(5)
-  game.slash("resume")
+  game.slash("start")
   game.advance(8)
   eq(#game.written, 2, "sessions after a pause and a resume")
   local opening, other = 0, 0

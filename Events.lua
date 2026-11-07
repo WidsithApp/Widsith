@@ -1,9 +1,7 @@
 -- Widsith — Events
 --
 -- Everything event-driven. Each handler turns one WoW event into zero or more
--- lines, using only what the event and the APIs expose at that instant. Where
--- a handler looks roundabout, the comment beside it says what the game does
--- that makes the obvious way wrong.
+-- lines, using only what the event and the APIs expose at that instant.
 
 local _, WJ = ...
 
@@ -13,8 +11,8 @@ WJ.handlers = handlers
 
 local playerGUID
 
--- Values that may be compared, added or joined: present, of the right type and
--- not secret. Doing any of those to a secret value throws.
+-- Values that are present, of the right type and not secret; comparing,
+-- adding or joining a secret value throws.
 local function secret(v)
   return issecretvalue ~= nil and issecretvalue(v)
 end
@@ -28,8 +26,7 @@ local function plainTable(v)
   if type(v) == "table" and not secret(v) then return v end
 end
 
--- A game function by its dotted name ("C_Bank.DepositMoney"), and where it
--- lives: the namespace table, or _G for a global.
+-- A dotted name ("C_Bank.DepositMoney") as its namespace table (or _G) and key.
 local function resolve(path)
   local namespace, name = path:match("^([^%.]+)%.(.+)$")
   if namespace then return _G[namespace], name end
@@ -40,8 +37,7 @@ local function pass(ok, ...)
   if ok then return ... end
 end
 
--- What the named game function returns, or nothing when the client lacks it
--- or it throws.
+-- Calls a game function by name; nothing when the client lacks it or it throws.
 local function ask(path, ...)
   local owner, name = resolve(path)
   if type(owner) ~= "table" then return end
@@ -76,19 +72,16 @@ function WJ.onEnteringWorld(isLogin, isReload)
     currentInstanceMapID = 0
     transition = true
   end
-  -- Any loading screen but login is a relocation: name the cast behind it, if one preceded
-  -- it (a hearthstone out of a dungeon, a portal into a city). Walking through an instance
-  -- door has no cast behind it; Extras.lua only accepts a cast that finished just before the
-  -- loading screen appeared, so a mount or ability used on the way to the door stays silent.
+  -- Any loading screen but login is a relocation; Extras.lua names the cast
+  -- behind it (a hearthstone, a portal) when one finished just before it.
   if not (isLogin or isReload) then
     WJ.onRelocation("load")
-    -- Experience or money the game granted behind the loading screen, written on arrival.
     WJ.catchUpProgress()
   end
 end
 
--- Subzone text flaps at boundaries (6 changes in 3 s crossing a city district),
--- so the zone is written only once it has held for ZONE_SETTLE seconds.
+-- Subzone text flaps at boundaries, so the zone is written only once it has
+-- held for ZONE_SETTLE seconds.
 local ZONE_SETTLE = 1.5
 local zoneTimer
 
@@ -97,7 +90,7 @@ local function writeZoneIfChanged()
   local zone, subzone = GetZoneText(), GetSubZoneText()
   if zone ~= lastZone or subzone ~= lastSubzone then
     write("ZONE", zone, subzone)
-    -- Noted as written before anything else runs, so a fault below can't write it twice.
+    -- Noted first, so a fault below can't write it twice.
     lastZone, lastSubzone = zone, subzone
     WJ.zoneChanged()
   end
@@ -117,9 +110,7 @@ handlers.PLAYER_CONTROL_LOST   = function() write("CTRL", "lost") end
 handlers.PLAYER_CONTROL_GAINED = function() write("CTRL", "gained") end
 
 ---------------------------------------------------------------------------
--- Combat and rest. Plain frame events with no payload, nothing
--- secret. The opening state is written at session start (seedState) so a
--- session that begins mid-fight or in an inn reads right from its first line.
+-- Combat and rest. The opening state is written at session start (seedState).
 ---------------------------------------------------------------------------
 
 handlers.PLAYER_REGEN_DISABLED = function() write("COMBAT", "enter") end
@@ -132,10 +123,8 @@ handlers.PLAYER_REGEN_ENABLED  = function()
 end
 
 ---------------------------------------------------------------------------
--- Group. Size, kind and who the other members are: class, GUID and
--- Name-Realm (character names are public in WoW), and each one's level in
--- the same order. GROUP_ROSTER_UPDATE fires often, so a line is written only
--- when the picture changed; the opening state is seeded at session start.
+-- Group. Size, kind, each other member's class, GUID and Name-Realm, and
+-- their levels. GROUP_ROSTER_UPDATE fires often: a line only on a change.
 ---------------------------------------------------------------------------
 
 local lastGroup
@@ -149,16 +138,15 @@ local function groupLine()
     for i = 1, count do
       local unit = prefix .. i
       if not UnitIsUnit(unit, "player") then
-        -- classID:guid:Name-Realm. Each part passes through field() so a secret
-        -- (instanced content can hide identity) becomes empty, never an error.
+        -- classID:guid:Name-Realm, each part through field() before joining,
+        -- so a secret (instances can hide identity) becomes empty.
         local _, _, classID = UnitClass(unit)
         local name, realm = UnitFullName(unit)
-        -- Through field() *before* concatenation: concatenating a secret value throws.
         name, realm = WJ.field(name), WJ.field(realm)
         if realm == "" then realm = WJ.field(GetNormalizedRealmName()) end
         local full = name ~= "" and (name .. "-" .. realm) or ""
         members[#members + 1] = WJ.field(classID) .. ":" .. WJ.field(UnitGUID(unit)) .. ":" .. full
-        -- A level the game hides is an empty entry, so the list stays in step with the members.
+        -- A hidden level is an empty entry, keeping the list in step.
         levels[#levels + 1] = WJ.field(UnitLevel(unit))
       end
     end
@@ -187,8 +175,7 @@ handlers.PLAYER_UPDATE_RESTING = function()
   write("REST", resting and "enter" or "leave")
 end
 
--- Any addon's RequestTimePlayed() produces a reply for everyone; identical
--- consecutive replies carry no information.
+-- Any addon's RequestTimePlayed() produces a reply for everyone; repeats are skipped.
 local lastPlayedTotal
 handlers.TIME_PLAYED_MSG = function(total, thisLevel)
   if total == lastPlayedTotal then return end
@@ -211,8 +198,7 @@ handlers.PLAYER_XP_UPDATE = function(unit)
   counts.xp = counts.xp + 1
 end
 
--- The event carries what the level brought: health, power, talent points, PvP talent
--- slots, then strength, agility, stamina and intellect (UnitDocumentation.lua).
+-- The payload is what the level brought, health to intellect (UnitDocumentation.lua).
 handlers.PLAYER_LEVEL_UP = function(level, ...)
   write("LEVEL", level, ...)
   -- Stats and UnitLevel() update after the event; snapshot once they have.
@@ -220,16 +206,15 @@ handlers.PLAYER_LEVEL_UP = function(level, ...)
   WJ.highlightShot("level")
 end
 
--- MONEY is written in its own section below, with the reason for each change.
+-- MONEY has its own section below.
 
 local deathOutstanding = false
 local lastFeignClock
-local FEIGN_REPEAT = 2   -- s; a real death's second PLAYER_DEAD came 0.5 s after the first
+local FEIGN_REPEAT = 2   -- s
 
--- Fires twice per death on 12.1, and also for Feign Death. A real death is
--- outstanding until PLAYER_ALIVE / PLAYER_UNGHOST, which dedupes its second
--- firing. A feign is never outstanding — nothing resurrects it, so it would
--- hide the next real death and write a stray ALIVE — and is deduped by time.
+-- Fires twice per death, and for Feign Death. A real death is outstanding
+-- until PLAYER_ALIVE / PLAYER_UNGHOST; a feign is never resurrected, so it is
+-- deduped by time instead.
 handlers.PLAYER_DEAD = function()
   local feign = UnitIsFeignDeath and UnitIsFeignDeath("player") or false
   if feign then
@@ -269,8 +254,7 @@ end
 -- NPC interaction
 ---------------------------------------------------------------------------
 
--- One NPC line per dialog: the same type and GUID within 10 s is the same
--- conversation (a quest giver fires several quest events per visit).
+-- One NPC line per dialog: the same type and GUID within 10 s is one visit.
 local lastNPCKey, lastNPCTime = nil, 0
 
 local function noteNPC(interactionType, guid)
@@ -297,8 +281,7 @@ local function rememberGiver()
   local guid = plainString(UnitGUID("npc")) or plainString(UnitGUID("questnpc"))
   if guid then
     lastGiverGUID, lastGiverTime = guid, GetTime()
-    -- The interaction manager never announces a quest-giver frame (type 4):
-    -- it reports the frame hiding but never showing. These events are the show.
+    -- The interaction manager reports a quest-giver frame (type 4) hiding, never showing.
     noteNPC(4, guid)
   end
 end
@@ -321,10 +304,8 @@ local objectives = {}
 -- Whether the game last said each quest was ready to turn in: ready[questID] = true/false
 local ready = {}
 
--- Whether the game says the quest is ready to turn in: every objective met,
--- counted or not (an escort, a delivery, a talk has no count to watch).
--- ReadyForTurnIn where the client has it, else the older IsComplete; nil
--- when neither answers.
+-- Whether the game says the quest is ready to turn in, counted objectives or
+-- not: ReadyForTurnIn, else the older IsComplete; nil when neither answers.
 local function questReady(questID)
   local ask = C_QuestLog.ReadyForTurnIn or C_QuestLog.IsComplete
   if type(ask) ~= "function" then return nil end
@@ -333,9 +314,7 @@ local function questReady(questID)
   return answer == true
 end
 
--- A quest's objectives as they stand when it enters the log: one QPROG each,
--- so a reader has the whole list from the start. A count of 0 is an objective
--- listed, not progress.
+-- A quest's objectives as it enters the log, one QPROG each.
 local function writeObjectiveList(questID, list)
   for idx, o in ipairs(list) do
     write("QPROG", questID, idx, o.fulfilled, o.required, o.type, o.text)
@@ -353,10 +332,8 @@ local function readObjectives(questID)
   return out
 end
 
--- Titles for every quest already in the log, so quests accepted before the
--- recording began still have a label (QLABEL). Written with the
--- opening snapshot, once quest data has loaded; a title the client doesn't
--- have yet is skipped rather than guessed.
+-- A QLABEL for every quest already in the log, with the opening snapshot; a
+-- title the client hasn't loaded is skipped.
 function WJ.writeQuestLabels()
   if not C_QuestLog.GetTitleForQuestID then return end
   for _, questID in ipairs(WJ.questIDs()) do
@@ -365,13 +342,10 @@ function WJ.writeQuestLabels()
   end
 end
 
--- Diff the whole log against the cache. Emits QPROG for every changed
--- objective, the whole list for a quest new to the log, and QDONE when the
--- game first says a quest is ready to turn in. Sub-millisecond even with a
--- full log (0.1–0.3 ms measured). A silent pass seeds the cache and writes
--- no progress: the seed two seconds after entering the world, and the one
--- with the opening snapshot, which alone also writes the quests already
--- ready, marked as the state the session began in.
+-- Diff the whole log against the cache: QPROG for each changed objective, the
+-- whole list for a quest new to the log, QDONE when one becomes ready. A
+-- silent pass only seeds the cache; the opening one also writes the quests
+-- already ready.
 local function diffQuestLog(silent, opening)
   local seen = {}
   local n = C_QuestLog.GetNumQuestLogEntries()
@@ -388,9 +362,7 @@ local function diffQuestLog(silent, opening)
         for idx, o in ipairs(now) do
           local p = prev[idx]
           if not p or p.fulfilled ~= o.fulfilled then
-            -- Trailing objective wording: free at capture, a
-            -- label like every other, and the only way to name an objective
-            -- that no kill precedes (gather, use, event).
+            -- The objective's wording rides along as a label.
             write("QPROG", questID, idx, o.fulfilled, o.required, o.type, o.text)
             changes = changes + 1
           end
@@ -400,8 +372,7 @@ local function diffQuestLog(silent, opening)
         writeObjectiveList(questID, now)
         changes = changes + #now
       end
-      -- The opening pass states what is ready, whatever an earlier session of this load knew
-      -- (a session resumed after a pause opens with the same baseline as a reload).
+      -- The opening pass states what is ready, whatever an earlier session knew.
       local isReady = questReady(questID)
       if isReady and opening then write("QDONE", questID, 1)
       elseif isReady and not silent and not ready[questID] then write("QDONE", questID) end
@@ -441,15 +412,13 @@ handlers.UNIT_QUEST_LOG_CHANGED = function(unit)
   if unit == "player" then scheduleDiff() end
 end
 
--- Not a trigger (fires ~1/s while walking) — but in debug mode it shows
--- whether objective counts are fresh by the time it arrives.
+-- Too frequent to trigger a diff; shown in debug mode only.
 handlers.QUEST_LOG_UPDATE = function()
   if WJ.debug then print("|cff8888ffWJ|r QUEST_LOG_UPDATE") end
 end
 
--- The quest's own level, and the level the game rates its difficulty by (the
--- colour of its name in the log, which follows the player on a quest that
--- scales). Each is empty when the client can't say or hides it.
+-- The quest's own level, and the level its difficulty colour is rated by
+-- (which follows the player on a scaling quest).
 local function questLevels(questID)
   local index = plainNumber((ask("C_QuestLog.GetLogIndexForQuestID", questID)))
   local info = index and plainTable((ask("C_QuestLog.GetInfo", index)))
@@ -462,8 +431,7 @@ handlers.QUEST_ACCEPTED = function(questID)
   local title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(questID)
   write("QACCEPT", questID, giverGUID(), title, questLevels(questID))
   counts.quests = counts.quests + 1
-  -- Its objectives, listed at once; a quest the game hands over already
-  -- finished is ready from this moment.
+  -- Its objectives, and QDONE if it comes already finished.
   local list = readObjectives(questID)
   writeObjectiveList(questID, list)
   objectives[questID] = list
@@ -475,7 +443,7 @@ end
 handlers.QUEST_TURNED_IN = function(questID, xpReward, moneyReward)
   write("QTURNIN", questID, xpReward, moneyReward, giverGUID())
   counts.quests = counts.quests + 1
-  -- The reward's money, as the game states it, explains the change it brings.
+  -- The reward's money is the reason for the change it brings.
   local reward = plainNumber(moneyReward)
   if reward and reward > 0 then WJ.moneyReason("quest", reward, nil, { after = true }) end
   objectives[questID], ready[questID] = nil, nil
@@ -490,21 +458,15 @@ end
 -- Kills
 ---------------------------------------------------------------------------
 
--- Two independent facts about a kill:
---   KILL  from PARTY_KILL — attributed, but silent for a pet's killing blow;
---         inside instances it fires with the GUID hidden.
---   TDIED from PLAYER_TARGET_DIED — fires for our target's death whoever
---         landed the blow; the GUID is secret inside instances.
--- When both describe the same unit in the same second, TDIED is dropped.
+-- KILL from PARTY_KILL is attributed but silent for a pet's killing blow;
+-- TDIED from PLAYER_TARGET_DIED fires for the target whoever killed it. Both
+-- hide the GUID inside instances. TDIED is dropped when KILL covered it.
 
 local lastKillGUID, lastKillTime = nil, 0
 
--- What the thing was, at the instant it died: classification (normal, elite,
--- rare, rareelite, worldboss, trivial, minus), level (-1 is "??"), creature
--- type as its ID (1 Beast … 7 Humanoid …; UnitCreatureType returns name, id
--- since 11.1.5) with the localized name as a trailing label. Read from the
--- target unit, so only when the dying unit is our current target. Secrets
--- and mismatches become empty fields.
+-- Classification, level (-1 is "??"), creature type ID and its localized name
+-- (UnitCreatureType returns name, id). Read from the target, so only when the
+-- dying unit is the current target.
 local function creatureFacts(unit)
   local typeName, typeID = UnitCreatureType(unit)
   return UnitClassification(unit), UnitLevel(unit), typeID, typeName
@@ -554,16 +516,11 @@ end
 -- Loot
 ---------------------------------------------------------------------------
 
--- Which message a loot line came from, told by the game's own wording in the
--- player's language: the format strings the client prints a player's own loot
--- with ("You receive loot: %s.", "You receive item: %sx%d.", and so on),
--- turned into patterns once, on first use. Each kind has a form with a count
--- and one without; the counted forms are tried first, since the plain form's
--- "%s" would swallow a trailing "x3". A message that matches none keeps its
--- kind empty, never guessed: a wrong kind would show loot dropping from
--- nowhere. "item" is what the game pushes into the bags without a loot
--- window: quest rewards, mail, and on Retail every step of an item upgrade,
--- which prints the same item again each time.
+-- Which message a loot line came from, matched against the client's own
+-- format strings in the player's language. Counted forms come first, since
+-- the plain form's "%s" would swallow a trailing "x3"; no match leaves the
+-- kind empty. "item" is pushed into the bags without a loot window (quest
+-- rewards, mail, each step of an item upgrade on Retail).
 local LOOT_FORMATS = {
   { "LOOT_ITEM_SELF_MULTIPLE", "loot" },             { "LOOT_ITEM_SELF", "loot" },
   { "LOOT_ITEM_PUSHED_SELF_MULTIPLE", "item" },      { "LOOT_ITEM_PUSHED_SELF", "item" },
@@ -574,11 +531,9 @@ local LOOT_FORMATS = {
 local lootPatterns          -- { pattern, kind, slots, args }: slots[n] is "s" (the link) or "d" (the count)
 local missingFormats = {}
 
--- A format string as a Lua pattern anchored at both ends: "%s" and "%d" (and
--- their positional forms, "%1$s") become captures; the rest matches literally.
--- The captures come in the order they appear in the text, which a positional
--- format may not keep ("%2$s has fled from %1$s in a duel"): slots[n] says what
--- the nth capture is, and args[n] which of the format's arguments it fills.
+-- A format string as an anchored Lua pattern, "%s" and "%d" (and "%1$s") as
+-- captures. A positional format may reorder its arguments, so slots[n] says
+-- what the nth capture is and args[n] which argument it fills.
 local function messagePattern(fmt)
   local slots, args = {}, {}
   local body = fmt:gsub("%%(%d*)%$?([sd])", function(position, kind)
@@ -591,8 +546,7 @@ local function messagePattern(fmt)
   return "^" .. body .. "$", slots, args
 end
 
--- One pattern for each format the client has, in the list's order, each with
--- the kind its row names; a format the client lacks is noted for /widsith check.
+-- One pattern per format the client has; one it lacks is noted for /widsith check.
 local function buildPatterns(formats)
   local out = {}
   for _, entry in ipairs(formats) do
@@ -607,8 +561,7 @@ local function buildPatterns(formats)
   return out
 end
 
--- A message's values by the format's argument numbers (values[1] is what the
--- format's first argument was), or nothing when the message isn't that format.
+-- A message's values by the format's argument numbers, or nothing on no match.
 local function messageArgs(p, msg)
   local captures = { msg:match(p.pattern) }
   if captures[1] == nil then return end
@@ -633,8 +586,7 @@ function WJ.missingFormatNames()
   return missingFormats
 end
 
--- The kind of a loot message and the count it names, or nothing for a
--- wording the client's own formats don't explain.
+-- The kind of a loot message and the count it names, if any.
 local function lootKind(msg)
   if not lootPatterns then buildLootPatterns() end
   for _, p in ipairs(lootPatterns) do
@@ -667,14 +619,9 @@ handlers.LOOT_OPENED = function()
   lootWindow.time, lootWindow.items = GetTime(), items
 end
 
--- The character's own choices in a group loot roll, and the rolls it won:
--- LOOTROLL choice itemID itemString. The game prints them in the loot channel
--- in its own words ("You have selected Need for: %s", "You passed on: %s",
--- "You won: %s"), which on Retail carry a loot history link around the item
--- and on WoW Forever before it; the patterns follow whichever the client has.
--- Each wording is the character's own, so who sent the message isn't asked:
--- what the game puts as its sender for a roll isn't documented. Winning
--- doesn't hand the item over; the loot message that follows writes its LOOT.
+-- LOOTROLL choice itemID itemString: the character's own group loot choices
+-- and wins, from the loot channel's self-only wordings (the sender of a roll
+-- message isn't documented). A win's item arrives as its own LOOT.
 local ROLL_FORMATS = {
   { "LOOT_ROLL_NEED_SELF", "need" }, { "LOOT_ROLL_GREED_SELF", "greed" },
   { "LOOT_ROLL_PASSED_SELF", "pass" }, { "LOOT_ROLL_YOU_WON", "won" },
@@ -685,13 +632,13 @@ function buildRollPatterns()
   if not rollPatterns then rollPatterns = buildPatterns(ROLL_FORMATS) end
 end
 
--- Writes the line and says so when the message is one of the rolls.
+-- Writes the line and returns true when the message is a roll.
 local function noteLootRoll(msg)
   buildRollPatterns()
   for _, p in ipairs(rollPatterns) do
     local values = messageArgs(p, msg)
     if values then
-      -- The item is the format's one "%s"; the numbers beside it are the loot history's.
+      -- The item is the format's "%s"; any numbers are the loot history's.
       local link
       for i, slot in ipairs(p.slots) do
         if slot == "s" then link = values[p.args[i]] break end
@@ -705,11 +652,9 @@ local function noteLootRoll(msg)
 end
 
 handlers.CHAT_MSG_LOOT = function(msg, _, _, _, _, _, _, _, _, _, _, guid)
-  -- The wiki doesn't mark `guid` or the text NeverSecret. A secret one can't be
-  -- compared (it throws), so whose loot it was can't be told: skip the line
-  -- rather than record a group member's loot as the player's.
+  -- Neither the text nor `guid` is marked NeverSecret; a secret one is skipped.
   if type(msg) ~= "string" or secret(msg) then return end
-  -- A roll names an item too, but isn't loot: it writes its own line, never a LOOT.
+  -- A roll names an item but isn't loot.
   if noteLootRoll(msg) then return end
   if secret(guid) or guid ~= playerGUID then return end
   local itemID = msg:match("item:(%d+)")
@@ -717,17 +662,13 @@ handlers.CHAT_MSG_LOOT = function(msg, _, _, _, _, _, _, _, _, _, _, guid)
   itemID = tonumber(itemID)
   local kind, count = lootKind(msg)
   local qty = count or tonumber(msg:match("|h|rx(%d+)")) or 1
-  -- The item as the game linked it: the ID with the bonus IDs, enchant, gems
-  -- and context that make this copy the item it is (an upgrade step changes
-  -- them, a drop doesn't). The plain ID stays the field a reader counts by.
+  -- The full item string: bonus IDs, enchant, gems and context.
   local itemString = msg:match("|H(item:[^|]+)|h")
   local source
   if GetTime() - lootWindow.time <= LOOT_WINDOW then
     source = lootWindow.items[itemID]
   end
-  -- The item's quality (0 poor … 5 legendary), so the replay can tell
-  -- grey junk from an epic. From the item cache; if the item isn't cached
-  -- yet, from the link's own quality tag. Neither: empty.
+  -- Quality from the item cache, else the link's own quality tag.
   local quality
   if C_Item and C_Item.GetItemQualityByID then
     local ok, q = pcall(C_Item.GetItemQualityByID, itemID)
@@ -739,17 +680,14 @@ handlers.CHAT_MSG_LOOT = function(msg, _, _, _, _, _, _, _, _, _, _, guid)
 end
 
 ---------------------------------------------------------------------------
--- Duels and /roll, from the system messages the game prints for them in the
--- client's own words. Everyone nearby sees them, so a line is kept only when
--- the character is in it.
+-- Duels and /roll, from system messages everyone nearby sees; a line is kept
+-- only when the character is in it.
 ---------------------------------------------------------------------------
 
-local alsoEvents = {}     -- joined to the handlers at registration, as the money ones are
+local alsoEvents = {}     -- joined to the handlers at registration
 
--- Whether a name a message gives is the character's own. On WoW Forever a
--- message may give the surname after the name: the first word must be the
--- character's name, and the rest, if any, the character's surname when the
--- game gives one, so a namesake with another surname isn't taken for them.
+-- Whether a name in a message is the character's own. On WoW Forever a
+-- message may give a surname after the name, which must then be theirs.
 local function isCharacter(name)
   name = plainString(name)
   if not name then return false end
@@ -771,10 +709,9 @@ function buildSystemPatterns()
   if not systemPatterns then systemPatterns = buildPatterns(SYSTEM_FORMATS) end
 end
 
--- DUEL outcome winner loser. Both duel messages give the winner as their first
--- argument and the loser as their second, whatever order the wording puts them
--- in ("%2$s has fled from %1$s in a duel"). Names as the message gives them.
-local DUEL_WAIT = 2       -- s between the game's end of a duel and the message that explains it, either way round
+-- DUEL outcome winner loser. Both duel messages give the winner as their
+-- first argument, whatever order the wording puts them in.
+local DUEL_WAIT = 2       -- s between DUEL_FINISHED and its message, either way round
 local duelExplainedAt = -math.huge
 local duelWaiting = false
 
@@ -806,10 +743,8 @@ alsoEvents.CHAT_MSG_SYSTEM = function(text)
   end
 end
 
--- The game's own end of the character's duel, which doesn't say who won. When
--- no message explains it within two seconds either side (under chat lockdown
--- the message can't be read), the duel is written as finished with no names,
--- two seconds after its end.
+-- The end of the character's duel, which doesn't say who won. With no readable
+-- message within DUEL_WAIT either side, it is written finished with no names.
 handlers.DUEL_FINISHED = function()
   local finishedAt = GetTime()
   if duelWaiting or finishedAt - duelExplainedAt <= DUEL_WAIT then return end
@@ -822,13 +757,9 @@ handlers.DUEL_FINISHED = function()
 end
 
 ---------------------------------------------------------------------------
--- Gear wear. Every SNAP lists each worn slot's durability (WJ.durabilityList),
--- and BROKEN slot itemID is written when a worn item's durability reaches
--- zero. UPDATE_INVENTORY_DURABILITY has no payload and fires over and over in
--- a fight, so it never reads at once: it marks a read as due, and a single
--- pass reads every slot five seconds later, so there is at most one pass in
--- five seconds and a BROKEN line is up to five seconds late. A repair raises
--- the values and writes nothing here: REPAIR records it.
+-- Gear wear. SNAP lists each worn slot's durability; BROKEN slot itemID when a
+-- worn item reaches zero. UPDATE_INVENTORY_DURABILITY has no payload and fires
+-- constantly in a fight, so it schedules one read WEAR_WAIT seconds later.
 ---------------------------------------------------------------------------
 
 local EQUIP_SLOTS = WJ.EQUIP_SLOTS   -- the worn slots, in SNAP's order
@@ -836,8 +767,7 @@ local WEAR_WAIT = 5
 local wearItem, wearValue = {}, {}   -- each slot's item and durability as last read
 local wearDue = false
 
--- A worn slot's durability, current and maximum; nothing for an empty slot or
--- an item that has none, and hidden when the game hides either value.
+-- A worn slot's current and maximum durability, and whether either is secret.
 -- GetInventoryItemDurability takes the slot alone: it reads the player's gear.
 local function slotWear(slot)
   local current, maximum = ask("GetInventoryItemDurability", slot)
@@ -849,9 +779,8 @@ local function slotItem(slot)
   return plainNumber((ask("GetInventoryItemID", "player", slot)))
 end
 
--- SNAP's durability field: "current/max" for each slot in turn, an empty entry
--- for a slot with none. The opening snapshot's read is where watching for a
--- break starts, so gear already broken as a session opens writes no BROKEN.
+-- SNAP's durability field, "current/max" per slot. seed: the opening read,
+-- where watching for a break starts.
 function WJ.durabilityList(seed)
   local entries = {}
   for slot = 1, EQUIP_SLOTS do
@@ -868,8 +797,7 @@ local readWear = WJ.guard("durability", function()
     local current, _, hidden = slotWear(slot)
     if not hidden then
       local item = slotItem(slot)
-      -- The same item, above zero at the last read and at zero now: another
-      -- item put on already broken is no break.
+      -- Only the same item going from above zero to zero is a break.
       if current == 0 and item ~= nil and item == wearItem[slot] and (wearValue[slot] or 0) > 0 then
         write("BROKEN", slot, item)
       end
@@ -885,16 +813,10 @@ handlers.UPDATE_INVENTORY_DURABILITY = function()
 end
 
 ---------------------------------------------------------------------------
--- Weather and daylight. WEATHER type intensity: the weather where the
--- character is, from C_Weather.GetCurrentWeather() at WEATHER_CHANGED (no
--- payload), its type as the game numbers it (Enum.WeatherType: 0 clear, 1
--- rain, 2 snow, 3 sandstorm, 4 miscellaneous) and its intensity as given; a
--- line only when either differs from the last one written. DAYLIGHT isDay: 1
--- when the game's clock turns to day, 0 to night, from
--- DIEL_CYCLE_CHANGED(isDayTime). Both are also written with the opening
--- snapshot, when the client answers. C_DateAndTime.IsDayTime() and
--- DIEL_CYCLE_CHANGED are in WoW Forever's API (1.60.1) and not in Retail's
--- (12.1.5), where no DAYLIGHT is written.
+-- Weather and daylight. WEATHER type intensity from C_Weather.GetCurrentWeather()
+-- at WEATHER_CHANGED (type as Enum.WeatherType); DAYLIGHT isDay from
+-- DIEL_CYCLE_CHANGED. Both also with the opening snapshot. DIEL_CYCLE_CHANGED
+-- and C_DateAndTime.IsDayTime() exist on WoW Forever, not on Retail.
 ---------------------------------------------------------------------------
 
 local lastWeather, lastDaylight
@@ -929,23 +851,16 @@ end
 ---------------------------------------------------------------------------
 -- Money: MONEY total kind window said source, on every PLAYER_MONEY.
 --
--- PLAYER_MONEY has no payload: GetMoney() is the new total, and the change is
--- the difference from the last one. The game never says in it why money
--- moved; it says so around it. Either the default UI calls a function (buy,
--- repair, fly, take a letter's money), or the game reports it in an event or a
--- chat message of its own (a quest's reward, a bonus roll, "You loot 1
--- Silver"). Each of those sets a pending reason: its kind, the amount the game
--- stated for it, and where it came from when the game names that (the corpse,
--- the vendor). The next change takes the oldest reason still pending. A reason
--- that no change follows within two seconds is dropped: the server refused it
--- (a flight the player couldn't afford), so it writes nothing.
+-- PLAYER_MONEY has no payload and no reason: GetMoney() is the new total. The
+-- reason comes from around it, either a hooked default-UI call (buy, repair,
+-- fly, take a letter's money) or the game's own event or chat message (a
+-- quest reward, a bonus roll, "You loot 1 Silver"). Each sets a pending
+-- reason with the amount the game stated and its source; the next change
+-- takes it, and one with no change within MONEY_WINDOW is dropped.
 --
--- The hooks are post-hooks (hooksecurefunc): they show that the call was
--- made, never that it worked, so the change is the figure and the stated
--- amount is only a check on it. A flight's listed cost, for one, ignores the
--- faction discount. Beside the reason is the window open at the time, as the
--- interaction manager names it, which is how the game's own money receipts
--- tell the mailbox's takings from a merchant's.
+-- Hooks run after the call and can't tell it worked, so the change is the
+-- figure and the stated amount is what the game listed. The open window, by the
+-- interaction manager's name, tells a mailbox's takings from a merchant's.
 ---------------------------------------------------------------------------
 
 local MONEY_WINDOW = 2    -- s a reason waits for the change it explains
@@ -960,24 +875,17 @@ local function expireReasons(now)
   end
 end
 
--- Set a reason. opts.after: the game's own report, which may come after the
--- change it explains; if the change already came (by the same amount, with no
--- reason, under another reason, or under this reason without its amount, as a
--- loot window's coin is written before its message under auto-loot), the
--- report adds nothing. A change this reason already explained with the same
--- amount is a different matter: the report is for the next change, as when
--- two corpses each hold the same coin.
--- opts.replaces: a confirmation that takes the place of the request before it.
--- opts.repeats: one call that brings several changes (selling all junk), each
--- of which carries it, until two seconds pass without one or something else
--- is done.
+-- Set a reason. opts.after: the game's report, which may come after its
+-- change; a change of that amount already written is completed rather than
+-- given a second reason. opts.replaces: a confirmation that replaces the
+-- request before it. opts.repeats: one call bringing several changes
+-- (selling all junk).
 local function moneyReason(kind, said, source, opts)
   local now = GetTime()
   expireReasons(now)
   said, source = plainNumber(said), plainString(source)
   if opts and opts.after and said then
-    -- The same reason already waiting without its amount (a loot window's coin
-    -- before its message): the report completes it.
+    -- The same reason waiting without its amount: the report completes it.
     for _, r in ipairs(pending) do
       if r.kind == kind and r.said == nil then
         r.said, r.source = said, r.source or source
@@ -1001,11 +909,8 @@ local function moneyReason(kind, said, source, opts)
 end
 WJ.moneyReason = moneyReason
 
--- The windows open, by the interaction manager's own names for them
--- (Enum.PlayerInteractionType: Merchant, MailInfo, TaxiNode …) in lower case.
--- The names, never the numbers: the clients number them differently. Each
--- remembers the NPC it was opened at, which is the source for a vendor's,
--- trainer's or flight master's reason.
+-- Open windows by their Enum.PlayerInteractionType name in lower case (the
+-- clients number them differently), each with its NPC as a reason's source.
 local windowNames = {}
 do
   local types = Enum and Enum.PlayerInteractionType
@@ -1029,7 +934,7 @@ local function windowOpen(name)
   end
 end
 
-local moneyEvents = {}    -- joined to the handlers above at registration
+local moneyEvents = {}    -- joined to the handlers at registration
 
 moneyEvents.PLAYER_INTERACTION_MANAGER_FRAME_SHOW = function(interactionType)
   if not plainNumber(interactionType) then return end
@@ -1043,12 +948,9 @@ end
 -- A loading screen closes every window.
 moneyEvents.LOADING_SCREEN_ENABLED = function() openWindows = {} end
 
--- A change is written a frame after its event, not at it: the message or
--- event that explains it may arrive in the same frame, after PLAYER_MONEY
--- itself (the chat line for looted coin does). The frame costs the line a few
--- milliseconds of time. Within one frame's changes, a reason that states an
--- amount goes to the change of exactly that amount first (a share and the
--- player's own coin can land together); what is left takes the oldest reason.
+-- A change is written a frame later, since its explaining message can follow
+-- PLAYER_MONEY in the same frame. A reason goes first to a change of exactly
+-- its amount; what is left takes the oldest reason.
 local changesDue = {}
 
 local function writeChanges()
@@ -1087,8 +989,7 @@ local function writeChanges()
   end
 end
 
--- Written out at once when the session ends, so a change in the last frame
--- before a logout or a pause isn't lost.
+-- Written out at once when the session ends.
 function WJ.flushMoney()
   writeChanges()
 end
@@ -1099,14 +1000,9 @@ handlers.PLAYER_MONEY = function()
   if #changesDue == 1 then C_Timer.After(0, WJ.guard("money", writeChanges)) end
 end
 
--- Loot money. The loot window lists coin as a slot with no number in it
--- (GetLootSlotType says Money); the amount is in the chat message the game
--- prints, in the client's own words: "You loot %s", "Your share of the loot is
--- %s.", and the forms with the guild's cut. Each is turned into a pattern the
--- way the item messages are, the longer forms first so the plain one can't
--- swallow them. The coins are read with the client's own "%d Gold", "%d
--- Silver" and "%d Copper", and the stated amount is kept only when they
--- account for every digit in it; anything else would be a guess.
+-- Loot money. The loot window's coin slot has no amount; it is in the
+-- CHAT_MSG_MONEY message, read with the client's own formats (longer forms
+-- first) and its "%d Gold" / "%d Silver" / "%d Copper" strings.
 local MONEY_FORMATS = {
   { "YOU_LOOT_MONEY_GUILD", "loot" },     { "YOU_LOOT_MONEY", "loot" },
   { "LOOT_MONEY_SPLIT_GUILD", "share" },  { "LOOT_MONEY_SPLIT", "share" },
@@ -1115,7 +1011,7 @@ local MONEY_FORMATS = {
 local COIN_FORMATS = { { "GOLD_AMOUNT", 10000 }, { "SILVER_AMOUNT", 100 }, { "COPPER_AMOUNT", 1 } }
 local moneyPatterns, coinPatterns
 
--- Assigned to the name declared with the loot patterns, so /widsith check can build them too.
+-- Declared with the loot patterns, so /widsith check can build them too.
 function buildMoneyPatterns()
   if moneyPatterns then return end
   moneyPatterns, coinPatterns = buildPatterns(MONEY_FORMATS), {}
@@ -1142,9 +1038,8 @@ local function coinAmount(text)
   return total
 end
 
--- The last loot window's coin: where it came from, and whether the window was
--- a pickpocket's. Nothing marks a pickpocket's window as such; it is the one
--- that opens within two seconds of Pick Pocket (spell 921) succeeding.
+-- The last loot window's coin source. Nothing marks a pickpocket's window; it
+-- is the one opening soon after Pick Pocket (spell 921) succeeds.
 local PICK_POCKET, PICK_POCKET_WINDOW = 921, 2
 local lootMoney = { at = -math.huge }
 local pickPocket = { at = -math.huge }
@@ -1169,9 +1064,7 @@ moneyEvents.LOOT_OPENED = function()
   end
   if stolen and not source then source = pickPocket.target end
   lootMoney = { at = now, source = source, stolen = stolen }
-  -- A coin slot in the window is the reason by itself: the change follows at
-  -- once under auto-loot, and the chat message that states the amount can
-  -- arrive a moment later. It fills the amount in when it does.
+  -- A coin slot is a reason by itself; the chat message fills in the amount later.
   if hasCoin then moneyReason(stolen and "pickpocket" or "loot", nil, source) end
 end
 
@@ -1190,8 +1083,7 @@ moneyEvents.CHAT_MSG_MONEY = function(text)
   end
 end
 
--- Money the game states outright, as an event: a bonus roll's or a toast's
--- coin, a crafting order's commission.
+-- Money the game states in an event of its own.
 moneyEvents.BONUS_ROLL_RESULT = function(typeIdentifier, _, quantity)
   if plainString(typeIdentifier) == "money" then moneyReason("bonus", quantity, nil, AFTER) end
 end
@@ -1203,8 +1095,7 @@ moneyEvents.CRAFTINGORDERS_DISPLAY_CRAFTER_FULFILLED_MSG = function(_, _, _, tip
   if tip and tip > 0 then moneyReason("commission", tip, nil, AFTER) end
 end
 
--- A completed trade (Extras.lua writes its line, then tells the money). Money
--- both ways in one trade states no single amount.
+-- A completed trade, from Extras.lua; money both ways states no single amount.
 function WJ.moneyFromTrade(gave, got)
   gave, got = plainNumber(gave) or 0, plainNumber(got) or 0
   if gave == 0 and got == 0 then return end
@@ -1213,10 +1104,8 @@ function WJ.moneyFromTrade(gave, got)
   moneyReason("trade", said, nil, AFTER)
 end
 
--- What the game says while a window is open, kept for the call that follows:
--- the repair bill (the repair hook runs once the bill is paid), a quest's fee,
--- the cost a confirmation dialog names, a commodity's total, and each letter's
--- money and cash on delivery. A letter's sender is never read.
+-- Costs the game states while a window is open, kept for the hooked call that
+-- follows (the repair hook runs only once the bill is paid).
 local repairCost, questFee, talentWipeCost, commodityTotal
 local gossipCost = {}
 local letters = {}
@@ -1244,17 +1133,14 @@ end
 local function letter(index)
   return (plainNumber(index) and letters[index]) or readLetter(index)
 end
--- An auction house's letter says what it is in its invoice: a sale's
--- proceeds, or a buyer's money coming back.
+-- An auction house letter's invoice type tells a sale from a refunded bid.
 local function letterKind(l)
   if l.invoice == "seller" or l.invoice == "seller_temp_invoice" then return "ahsale" end
   if l.invoice == "buyer" then return "ahrefund" end
   return "mailtake"
 end
 
--- A vendor's stated price: the listing is for one stack, so a purchase with
--- no quantity buys a stack, and one with a quantity buys that many of the
--- stack's units (as the merchant frame works out whether it can be afforded).
+-- A vendor's price is per listed stack; a quantity buys that many units of it.
 local function buyPrice(index, quantity)
   local info = plainTable((ask("C_MerchantFrame.GetItemInfo", index)))
   local price = info and plainNumber(info.price)
@@ -1264,9 +1150,8 @@ local function buyPrice(index, quantity)
   return math.floor(price / stack * count + 0.5)
 end
 
--- An item sold from the bags: its unit sell price times the stack, while the
--- slot still holds what was sold; once the bag has moved on, the sale is the
--- newest entry of the merchant's buy-back list.
+-- An item sold from the bags: unit price times stack while the slot still
+-- holds it, else the newest buy-back entry.
 local function sellPrice(bag, slot)
   if not windowOpen("merchant") then return nil, false end
   local info = plainTable((ask("C_Container.GetContainerItemInfo", bag, slot)))
@@ -1286,18 +1171,15 @@ local function itemDeposit(item, duration, quantity)
   return (ask("C_AuctionHouse.CalculateItemDeposit", item, duration, quantity))
 end
 
--- The functions the default UI calls to move money, one row each: the
--- function, the kind, and what the game states for it. That reader gets the
--- call's arguments and returns the amount; a second value names a different
--- kind, or false when the call moves no money after all. npc names the window
--- whose NPC is the source; the rest are moneyReason's options.
+-- The default UI's money calls: function, kind, and a reader given the call's
+-- arguments that returns the amount and optionally another kind, or false for
+-- no money. npc names the window whose NPC is the source.
 local MONEY_HOOKS = {
   { "BuyMerchantItem", "buy", buyPrice, npc = "merchant" },
   { "C_Container.UseContainerItem", "sell", sellPrice, npc = "merchant" },
   { "C_MerchantFrame.SellAllJunkItems", "junk", nil, npc = "merchant", repeats = true },
   { "BuybackItem", "buyback", function(slot) return (select(3, ask("GetBuybackItemInfo", slot))) end, npc = "merchant" },
-  -- Asked to use the guild's funds or not, a change in the player's money means
-  -- the player paid (when the guild pays, nothing changes and the reason lapses).
+  -- When the guild pays, nothing changes and the reason lapses.
   { "RepairAllItems", "repair", function() return repairCost end, npc = "merchant" },
   { "TakeTaxiNode", "taxi", function(index) return (ask("TaxiNodeCost", index)) end, npc = "taxinode" },
   { "BuyTrainerService", "train", function(index) return (ask("GetTrainerServiceCost", index)) end, npc = "trainer" },
@@ -1312,10 +1194,7 @@ local MONEY_HOOKS = {
     if gossipCost.id and plainNumber(optionID) ~= gossipCost.id then return nil, false end
     return cost
   end },
-  -- Sending a letter costs the postage and whatever money was attached, which the game takes in
-  -- one change, and the price the window shows for the send is both together (1 gold attached:
-  -- 10030 copper, on Retail 12.1.5). One reason, then: what sending the letter cost. By the time
-  -- the hook runs the attached money reads as nothing, so it can't be told apart anyway.
+  -- GetSendMailPrice is postage and attached money together, taken in one change.
   { "SendMail", "mailsend", function() return (ask("GetSendMailPrice")) end },
   { "TakeInboxMoney", "mailtake", function(index)
     local l = letter(index)
@@ -1375,8 +1254,7 @@ local function fromHook(signal, ...)
   moneyReason(kind, said, window and window.guid, signal)
 end
 
--- Every hook guarded: a function this client lacks is skipped, and a throw in
--- one is an ERR line named after it.
+-- A function this client lacks is skipped; each hook is guarded.
 function WJ.installMoneyHooks()
   for _, signal in ipairs(MONEY_HOOKS) do
     local owner, name = resolve(signal[1])
@@ -1387,9 +1265,7 @@ function WJ.installMoneyHooks()
   end
 end
 
--- The money handlers, and the others kept apart the same way, join whatever
--- else listens to the same event, each guarded on its own so a fault in one
--- never silences the other.
+-- Joins extra handlers to any already on the same event, each guarded on its own.
 local function joinEvents(extra)
   for event, fn in pairs(extra) do
     local first = handlers[event]
@@ -1421,8 +1297,8 @@ WJ.unitEvents = {
   PLAYER_XP_UPDATE         = "player",
 }
 
--- A client without an event (WoW Forever has no pet battles, for one) throws on
--- registering it. That family is simply not recorded; /widsith check lists them.
+-- Registering an event the client lacks throws (WoW Forever has no pet
+-- battles); those are skipped and listed by /widsith check.
 function WJ.registerEvents(frame)
   joinSharedEvents()
   local missing = {}
@@ -1440,22 +1316,11 @@ function WJ.registerEvents(frame)
   WJ.unregisteredEvents = missing
 end
 
--- Experience the game grants during a zone transfer (discovering the zone on
--- arrival, after a portal or a teleport) can come with no PLAYER_XP_UPDATE the
--- addon hears, and money moved then may have no PLAYER_MONEY either. So each
--- arrival after a loading screen, and each snapshot, reads again what the game
--- says and, where it differs from what the lines last said, writes the change
--- through the event's own handler, as the event would have. Nothing moved,
--- nothing written. atOnce: write a money change now rather than a frame later,
--- so the snapshot that follows comes after it.
---
--- While the client is still loading the character, what it hasn't loaded yet
--- reads as nothing: experience and its maximum 0, money 0. A read of nothing
--- is never a change, so it is skipped: a loaded character has a maximum at any
--- level, and money read as nothing where the lines last said more is taken as
--- not yet loaded (money really spent has PLAYER_MONEY of its own). Skipping
--- costs nothing, since the next snapshot reads the same again once the values
--- are real.
+-- Experience and money granted behind a loading screen may come with no event,
+-- so each arrival and snapshot rereads them and writes any difference through
+-- the event's own handler. Experience with no maximum, or money at zero where the lines
+-- said more, is a character not yet loaded and is skipped.
+-- atOnce: write a money change now, before the snapshot that follows.
 function WJ.catchUpProgress(atOnce)
   local max = plainNumber(UnitXPMax("player"))
   if max and max > 0 then handlers.PLAYER_XP_UPDATE("player") end
@@ -1467,10 +1332,9 @@ function WJ.catchUpProgress(atOnce)
   if atOnce then writeChanges() end
 end
 
--- Called at session start, once the player and quest log exist. Seeds the
--- caches so pre-existing state never emits a change line.
+-- Called at session start. Seeds the caches so existing state writes no change.
 function WJ.seedState()
-  -- A session states the weather and the daylight afresh with its opening snapshot.
+  -- Weather and daylight are stated afresh with the opening snapshot.
   lastWeather, lastDaylight = nil, nil
   lastXP, lastXPMax, lastLevel = UnitXP("player"), UnitXPMax("player"), UnitLevel("player")
   if InCombatLockdown() then write("COMBAT", "enter") end
@@ -1483,10 +1347,7 @@ function WJ.seedState()
   C_Timer.After(2, WJ.guard("questSeed", function() diffQuestLog(true) end))
 end
 
--- A session resumed after a pause opens the way a reload does: the
--- seeded state, the instance the character is in, where it is, and (Extras)
--- the character sheet. Whatever changed during the pause is only ever seen
--- as the difference between the last session's lines and these.
+-- A session resumed after a pause opens the way a reload does.
 function WJ.onResume()
   currentInstanceMapID = 0
   lastZone, lastSubzone = nil, nil

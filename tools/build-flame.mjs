@@ -17,6 +17,8 @@
 //                    under the ring.
 //   emblem.tga       64×64, the addon list's icon (TOC IconTexture): the disc with the lit
 //                    four-layer flame on it.
+//   flame-chat.tga   32×32, the lit flame alone on nothing, for the chat lines that open with
+//                    it (drawn at the chat font's height, so near its size).
 // Every cell is rendered at 8× and shrunk with a Lanczos filter, so its edges are already smooth;
 // a texture close to its size on screen stays smooth where a much larger one sampled small is
 // jaggy. Renders with sharp, the one dependency in tools/package.json (run `npm install` in
@@ -106,11 +108,22 @@ function tga(rgba, width, height) {
 	return Buffer.concat([header, body]);
 }
 
+/** The lit flame alone, filling its box, on a transparent ground: the outline spans x 11 to 53 and
+ *  y 3 to 61 of the 64 box, so it is moved to the middle and scaled to fill the height. */
+function flameAlone() {
+	const k = 64 / 58;
+	const layers = LIT.map((fill, i) => layer(CELLS[i], fill)).join('');
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="${64 * SUPER}" height="${64 * SUPER}" viewBox="0 0 64 64">
+  <g transform="translate(${32 - 32 * k} ${-3 * k}) scale(${k})">${layers}</g>
+</svg>`;
+}
+
 const TEXTURES = [
 	{ file: 'flame', svg: strip(64), width: 64 * STRIP_CELLS, height: 64 },
 	{ file: 'flame-large', svg: strip(128), width: 128 * STRIP_CELLS, height: 128 },
 	{ file: 'disc', svg: disc(''), width: 64, height: 64 },
-	{ file: 'emblem', svg: disc(flameOnDisc()), width: 64, height: 64 }
+	{ file: 'emblem', svg: disc(flameOnDisc()), width: 64, height: 64 },
+	{ file: 'flame-chat', svg: flameAlone(), width: 32, height: 32 }
 ];
 
 const media = path.join(here, '..', 'media');

@@ -1,32 +1,20 @@
 -- Widsith — the recording icon and the save reminder
 --
--- WoW writes SavedVariables only on logout or a UI reload, so a crash
--- loses everything recorded since the last one. This is the addon's only
--- on-screen element: the Widsith flame on a midnight disc inside the game's
--- own minimap ring, by the minimap. The flame is a gauge of unsaved play:
+-- WoW writes SavedVariables only on logout or a UI reload, so a crash loses
+-- everything since the last one. The addon's one on-screen element is the
+-- Widsith flame on a disc in the minimap ring, a gauge of unsaved play: it
+-- lights when recording starts, burns down while the recording goes unsaved,
+-- then the ring glows and, once the character is resting, a reminder appears.
+-- A left click saves, which is a UI reload; stopped, the flame is out and grey.
 --
---   * It lights with a flare when recording starts (at login, after a reload,
---     or on resume), then burns quietly, breathing a little.
---   * While the recording goes unsaved it burns down, from its base, over
---     half an hour, until only an ember is left. Then the ring glows, and a
---     quiet reminder appears beside it once the character is resting somewhere
---     safe. Either can be switched off in the menu: with reminders off the
---     flame stays full, with animations off nothing moves.
---   * A left click saves, which is a UI reload (the only way to make the game
---     write the file); the flame lights again as the interface comes back.
---   * Paused, or not recording at all, the flame is out: grey, on a darkened
---     disc.
---
--- Nothing reloads unless the player clicks: the icon, the reminder, or
--- /widsith save. Settings live in WidsithUI, beside the recording in the same
--- per-character file; the site reads only WidsithDB. Nothing here is written
--- to the recording. The ring and the highlight are the game's own art, loaded
--- from the client; the flame, the disc and the glow are drawn for the addon
--- (media/).
+-- Settings are the account's (WidsithAccount); a save under way and the last
+-- emote are the character's (WidsithUI). Nothing here is written to the
+-- recording. The ring and highlight are the game's own art; the flame, disc and
+-- glow are the addon's (media/).
 
 local ADDON_NAME, WJ = ...
 
-local BURN_TIME    = 30 * 60 -- seconds of unsaved play from a full flame to an ember
+local BURN_TIME    = 45 * 60 -- seconds of unsaved play from a full flame to an ember
 local REMIND_GAP   = 10 * 60 -- seconds from one reminder to the next
 local SHOW_FOR     = 30      -- seconds an ignored reminder stays up
 local CHECK_EVERY  = 5
@@ -35,16 +23,27 @@ local floor, format, max, min = math.floor, string.format, math.max, math.min
 local PREFIX = WJ.PREFIX
 local MEDIA = "Interface\\AddOns\\" .. ADDON_NAME .. "\\media\\"
 
-local settings            -- WidsithUI
+-- What each setting is until the player changes it: one list for menu and panel.
+local DEFAULTS = { shown = true, remind = true, animate = true, chat = true, emote = false, onRing = true, locked = false,
+  iconSize = 1, screenshots = true, shotsChat = true }
+WJ.DEFAULTS = DEFAULTS
+
+local settings            -- the account's settings (WidsithAccount.settings)
 local icon, bubble
 local lastReminder = -math.huge
 local bubbleHideAt
 local bubbleForced       -- shown by /widsith remind: only the timer hides it
 
--- Chat, through the recorder's own channel when it has one (which honours
--- "Show chat messages"); a direct answer to something the player did prints.
+-- Chat, through the recorder's channel when it has one (it honours "Show chat messages").
 local function say(text)
   if WJ.say then WJ.say(text) else print(PREFIX .. text) end
+end
+
+-- A setting as the player has it, or its default while they haven't touched it.
+local function setting(key)
+  local value = settings and settings[key]
+  if value == nil then return DEFAULTS[key] end
+  return value
 end
 
 local function duration(seconds)
@@ -65,11 +64,9 @@ local function calm()
   return true
 end
 
--- Saving is a reload. The flag survives it (the file is written on the way
--- down), so the interface that comes back knows it was asked for and says so.
--- Not while the game fails to read the file back (WJ.savesNotLoaded): a reload
--- then replaces the recording on disk. The player's action, from the icon, the
--- reminder, the settings panel or /widsith save: a fault is answered, never thrown.
+-- Saving is a reload; the flag survives it, so the interface that comes back says
+-- so. Refused while the game failed to load the file back (WJ.savesNotLoaded),
+-- when a reload would replace the recording on disk.
 local save = WJ.attempt("save", function()
   if InCombatLockdown() then
     print(PREFIX .. "can't reload the interface in combat; try again when the fight is over.")
@@ -79,19 +76,14 @@ local save = WJ.attempt("save", function()
     print(PREFIX .. "not reloading: the game didn't load the earlier recording at the last reload, and a reload now would replace it. Copy the file out of SavedVariables first.")
     return
   end
-  settings.saving = true
+  WidsithUI.saving = true
   ReloadUI()
 end)
 
--- An emote when the recording is saved, so the people nearby see what the
--- character is doing: every reload writes the file, so the hook is on the
--- reload itself, whoever asked for it (the icon, the reminder, /widsith save,
--- /reload, another addon). Off until switched on in the menu or the options
--- panel. At most once a minute, so a run of reloads sends one: a reload forgets
--- everything the addon holds, so the time of the last emote is kept with the
--- settings, which the same reload writes out. Never in combat or in an
--- instance, and never while the game forbids addons to send chat. The game
--- puts the character's name in front.
+-- An emote when the recording is saved, off by default. It hooks every reload,
+-- since each one writes the file, at most once a minute (the time kept in
+-- WidsithUI, which outlives the reload), and never in combat, in an instance or
+-- while the game forbids addons to send chat.
 local EMOTES = {
   "scribbles some notes in their Widsith journal.",
   "dates a fresh page in their Widsith journal.",
@@ -101,13 +93,13 @@ local EMOTES = {
 local EMOTE_GAP = 60 -- seconds between two emotes, at the least
 
 local function emoteOnSave()
-  if not settings or settings.emote ~= true or not WJ.isRecording() then return end
+  if setting("emote") ~= true or not WJ.isRecording() then return end
   if InCombatLockdown() or UnitAffectingCombat("player") or IsInInstance() then return end
   if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then return end
   if type(SendChatMessage) ~= "function" then return end
   local now = time()
-  if settings.emotedAt and now - settings.emotedAt < EMOTE_GAP then return end
-  if pcall(SendChatMessage, EMOTES[math.random(#EMOTES)], "EMOTE") then settings.emotedAt = now end
+  if WidsithUI.emotedAt and now - WidsithUI.emotedAt < EMOTE_GAP then return end
+  if pcall(SendChatMessage, EMOTES[math.random(#EMOTES)], "EMOTE") then WidsithUI.emotedAt = now end
 end
 
 ---------------------------------------------------------------------------
@@ -181,12 +173,9 @@ end
 -- The flame
 ---------------------------------------------------------------------------
 
--- The flame is one outline drawn several times inward from its base, dark to
--- light: four layers, or three where it is small (under about 24 px the fourth
--- step turns to mush). The layers are shipped as white shapes in one strip,
--- each cell the outline at one scale about the base, and coloured here, so the
--- same texture serves lit, dimmed and out. Two strips: 64 px cells for Small
--- and Medium, 128 px for Large, each close to its size on screen.
+-- The flame is one outline in nested layers from its base, dark to light: four,
+-- or three when small. Each layer is a white cell of one strip, coloured here, so
+-- one texture serves lit, dimmed and out; Large has a strip of bigger cells.
 local STRIP, STRIP_LARGE = MEDIA .. "flame", MEDIA .. "flame-large"
 local STRIP_CELLS = 8
 local FOUR  = { cells = { 0, 1, 2, 3 }, colours = { "b9521a", "e08a2b", "f4b04a", "fff4d6" } }
@@ -201,14 +190,12 @@ local BREATHE = 2.1           -- seconds out (and the same back)
 local RING_ATLAS = "UI-HUD-Minimap-Frame-Cycle"
 local DISC = MEDIA .. "disc"
 
--- Sizes offered in the menu, relative to the day/night indicator. Small, the
--- indicator's own size, is the default: the two sit on the ring as a pair.
+-- Sizes offered in the menu, relative to the day/night indicator; Small matches it.
 local SIZES = {
   { 1,   "Small" },
   { 1.4, "Medium" },
   { 1.8, "Large" },
 }
-local DEFAULT_SIZE = 1
 local LARGE = 1.8     -- from here up, the large strip
 local disc, layers, halos, embers, glow, pulse
 local discSize       -- the disc's size in the icon's units
@@ -220,11 +207,11 @@ local function rgb(hex)
 end
 
 local function size()
-  return settings.iconSize or DEFAULT_SIZE
+  return setting("iconSize")
 end
 
 local function animate()
-  return settings.animate ~= false
+  return setting("animate")
 end
 
 -- A cell of the strip onto a texture.
@@ -243,23 +230,19 @@ local function drawing()
   return flameHeight() * size() >= FOUR_FROM and FOUR or THREE
 end
 
--- How much of the flame is left: 1 just after a save, EMBER once BURN_TIME of
--- unsaved play has passed. Full for good when reminders are off, when nothing
--- is recording (the out flame is drawn full size), and while the game fails to
--- read the file back (WJ.savesNotLoaded): a reload then replaces the recording
--- on disk, so nothing here may ask for one.
+-- How much of the flame is left, from 1 after a save to EMBER after BURN_TIME.
+-- Full when reminders are off, nothing is recording, or WJ.savesNotLoaded.
 local function gauge()
-  if not WJ.isRecording() or not settings.remind or WJ.savesNotLoaded then return 1 end
+  if not WJ.isRecording() or not setting("remind") or WJ.savesNotLoaded then return 1 end
   local burnt = min(1, WJ.secondsSinceSave() / BURN_TIME)
   return 1 - burnt * (1 - EMBER)
 end
 
 local function due()
-  return WJ.isRecording() and settings.remind and not WJ.savesNotLoaded and WJ.secondsSinceSave() >= BURN_TIME
+  return WJ.isRecording() and setting("remind") and not WJ.savesNotLoaded and WJ.secondsSinceSave() >= BURN_TIME
 end
 
--- Lay the layers out for the current size, drawing and gauge: each stands on
--- the base, so a smaller flame is a lower one, and dims as it shrinks.
+-- Lay the layers out on the base for the size, drawing and gauge, dimmer as it shrinks.
 local function layoutFlame()
   local d = drawing()
   local g = gauge()
@@ -280,9 +263,7 @@ local function layoutFlame()
   end
 end
 
--- Breathing: the inner layers swell a little and settle, from the base, every
--- few seconds; the outer holds still. Only while recording, and only with
--- animations on.
+-- Breathing: the inner layers swell a little and settle; the outer holds still.
 local function setBreathing(on)
   for i, layer in ipairs(layers) do
     local group = layer.breathe
@@ -301,10 +282,8 @@ local function setBreathing(on)
   end
 end
 
--- The flare when recording starts: a flame-shaped halo grows from the base to
--- nearly twice the flame and fades, a second one a moment behind it, while the
--- layers themselves swell and settle. Plays once, this long after the flame
--- lights, so a loading screen still fading doesn't swallow its start.
+-- The flare when recording starts: two halos grow and fade while the layers swell,
+-- played late enough that a fading loading screen doesn't hide it.
 local FLARE_DELAY = 0.8
 
 local function radiate()
@@ -324,10 +303,8 @@ local function radiate()
   end
 end
 
--- The spark when the flame is pointed at: the inner layers flare and settle,
--- and two embers lift off the tip and fade, one up and right, one up and left
--- a moment later. The tip is at (39, 3) of the outline's 64-unit box, so each
--- ember starts there, wherever the burn-down has put it.
+-- The spark when the flame is pointed at: the inner layers flare and two embers
+-- lift off the tip, at (39, 3) of the outline's 64-unit box.
 local function spark()
   if not animate() or not WJ.isRecording() then return end
   local h = flameHeight() * gauge()
@@ -355,8 +332,7 @@ local function updateIcon()
   local shade = recording and 1 or 0.55
   disc:SetVertexColor(shade, shade, shade)
   setBreathing(recording and animate() and icon:IsShown())
-  -- Due: the glow pulses for as long as it is, so it keeps asking; with
-  -- animations off it holds still.
+  -- Due: the glow pulses, or holds still with animations off.
   if isDue then
     glow:Show()
     if animate() then
@@ -373,20 +349,15 @@ local function updateIcon()
     pulse:Stop()
     glow:Hide()
   end
-  -- Recording that has just begun: the flame is full at once (set above), and
-  -- the flare follows a moment later, so the loading screen's fade doesn't
-  -- hide its start. Seen on a typical PC: lit at the instant, the flare's
-  -- first half was lost behind the fade; a short wait shows the whole of it.
+  -- Recording that has just begun: the flare follows the lit flame a moment later.
   if recording and wasRecording == false then
     C_Timer.After(FLARE_DELAY, WJ.guard("flare", radiate))
   end
   wasRecording = recording
 end
 
--- Where the day/night indicator exists, the icon takes the same parent, scale
--- and layer, so it grows and moves with the minimap through Edit Mode, times
--- the size chosen in the menu; by default it sits at the indicator's anchor
--- mirrored left to right, so the two form a pair on the ring.
+-- Where the day/night indicator exists, the icon takes its parent, scale and
+-- layer, so it follows the minimap through Edit Mode, times the chosen size.
 local function diel()
   return MinimapCluster and MinimapCluster.DielFrame
 end
@@ -408,13 +379,10 @@ local function toIconUnits()
   return UIParent:GetEffectiveScale() / icon:GetEffectiveScale()
 end
 
--- On the minimap's ring (the default), the icon's place is an angle round the
--- minimap's centre, at the day/night dial's distance from it (or just outside the
--- minimap on a client without the dial), and dragging slides it round the ring,
--- as minimap buttons traditionally move. Worked in screen pixels, so the minimap's
--- and the icon's scales don't matter.
+-- On the ring (the default) the icon's place is an angle round the minimap's
+-- centre, worked in screen pixels so neither frame's scale matters.
 local function onRing()
-  return settings.onRing ~= false and Minimap ~= nil
+  return setting("onRing") and Minimap ~= nil
 end
 
 local function screenCenter(frame)
@@ -461,7 +429,7 @@ local function placeIcon()
 end
 
 function WJ.iconShown()
-  return settings and settings.shown
+  return settings ~= nil and setting("shown")
 end
 
 function WJ.setIconShown(shown)
@@ -478,8 +446,7 @@ function WJ.setIconShown(shown)
   end
 end
 
--- Three lines: the name, the state, what the buttons do. The rest is in the
--- options panel's About page.
+-- Three lines: the name, the state, what the buttons do.
 local function showTooltip(self)
   spark()
   GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
@@ -493,7 +460,7 @@ local function showTooltip(self)
       GameTooltip:AddLine("Recording, " .. duration(WJ.secondsSinceSave()) .. " unsaved.", 1, 1, 1)
     end
   elseif WJ.isPaused() then
-    GameTooltip:AddLine("Paused.", 1, 1, 1)
+    GameTooltip:AddLine("Stopped.", 1, 1, 1)
   else
     GameTooltip:AddLine("Not recording.", 1, 0.3, 0.3)
   end
@@ -502,11 +469,8 @@ local function showTooltip(self)
   GameTooltip:Show()
 end
 
--- The settings, as the menu here and the options panel (Options.lua) read and
--- change them: shown, remind, animate, chat, emote, onRing, locked, iconSize,
--- screenshots and shotsChat. Every change goes through here, so the icon follows
--- at once whichever asked. Emote, screenshots and shotsChat are off unless they
--- have been set true; the others are on unless false.
+-- The settings, as the menu here and the options panel (Options.lua) change
+-- them; every change goes through here, so the icon follows at once.
 local function setOnRing(on)
   if onRing() and not on then
     -- Leaving the ring: stay exactly where it is, now free to drag anywhere.
@@ -522,18 +486,15 @@ WJ.ICON_SIZES = SIZES
 
 function WJ.getIconSetting(key)
   if not settings then return nil end
-  if key == "animate" then return animate() end
-  if key == "chat" then return settings.chat ~= false end
-  if key == "emote" then return settings.emote == true end
   if key == "onRing" then return onRing() end
   if key == "iconSize" then return size() end
-  return settings[key] and true or false
+  return setting(key)
 end
 
 function WJ.setIconSetting(key, value)
   if not settings then return end
   if key == "shown" then
-    if value ~= (settings.shown and true or false) then WJ.setIconShown(value) end
+    if value ~= setting("shown") then WJ.setIconShown(value) end
     return
   end
   if not icon then
@@ -575,9 +536,9 @@ local openMenu = WJ.attempt("menu", function(self)
   MenuUtil.CreateContextMenu(self, function(_, root)
     root:CreateTitle(WJ.NAME)
     if WJ.isRecording() then
-      root:CreateButton("Pause recording", WJ.togglePause)
+      root:CreateButton("Stop recording", WJ.togglePause)
     elseif WJ.isPaused() then
-      root:CreateButton("Resume recording", WJ.togglePause)
+      root:CreateButton("Start recording", WJ.togglePause)
     end
     local function checkbox(menu, name, key)
       menu:CreateCheckbox(name,
@@ -585,17 +546,18 @@ local openMenu = WJ.attempt("menu", function(self)
         function() WJ.setIconSetting(key, not WJ.getIconSetting(key)) end)
     end
     checkbox(root, "Remind me to save", "remind")
-    checkbox(root, "Animations", "animate")
-    checkbox(root, "Attach to minimap", "onRing")
-    checkbox(root, "Lock position", "locked")
-    checkbox(root, "Show chat messages", "chat")
     checkbox(root, "Emote when saving", "emote")
     local shots = root:CreateButton("Screenshots")
     checkbox(shots, "Screenshot highlights", "screenshots")
     checkbox(shots, "Show chat in the pictures", "shotsChat")
-    local sizes = root:CreateButton("Icon size")
+    -- The icon's own settings, the sizes under a divider.
+    local iconMenu = root:CreateButton("Icon")
+    checkbox(iconMenu, "Animations", "animate")
+    checkbox(iconMenu, "Attach to minimap", "onRing")
+    checkbox(iconMenu, "Lock position", "locked")
+    if iconMenu.CreateDivider then iconMenu:CreateDivider() end
     for _, entry in ipairs(SIZES) do
-      sizes:CreateRadio(entry[2],
+      iconMenu:CreateRadio(entry[2],
         function() return size() == entry[1] end,
         function() WJ.setIconSetting("iconSize", entry[1]) end)
     end
@@ -653,8 +615,7 @@ local function createFlame()
     local f = scaleFromBase(flare, 1.15, 1, 0.6, "OUT")
     f:SetStartDelay(0.05 * (i - 1))
     layer.flare = flare
-    -- The spark when pointed at: a quick swell and a slower settling, the inner
-    -- layers each a moment after the one outside it.
+    -- The spark when pointed at: a quick swell and a slower settling.
     local sparkGroup = layer:CreateAnimationGroup()
     local up = scaleFromBase(sparkGroup, 1, i == 2 and 1.08 or 1.15, 0.32, "OUT")
     up:SetOrder(1)
@@ -664,8 +625,7 @@ local function createFlame()
     layer.spark = sparkGroup
     layers[i] = layer
   end
-  -- The embers: two small diamonds (a square turned 45°) in the flame's lighter
-  -- colours, drifting up from the tip as they fade.
+  -- The embers: two small diamonds drifting up from the tip as they fade.
   embers = {}
   local drift = { { 0.45, 1.2, 1.1, 0, "f4b04a" }, { -0.4, 1.3, 1.2, 0.35, "fff4d6" } }
   for i, d in ipairs(drift) do
@@ -698,11 +658,10 @@ local function createIcon()
   icon:RegisterForDrag("LeftButton")
   icon:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
-  -- The ring is asked for by its element name, as the day/night indicator asks
-  -- for it, so the client picks its 84 px drawing wherever the interface is
-  -- scaled up; the member name (…-c60) would pin the 42 px one and blur.
-  -- Retail has no such ring; there it is the classic minimap-button ring,
-  -- laid out the way minimap buttons conventionally are.
+  -- The ring is asked for by its element name, as the day/night indicator does,
+  -- so the client picks a larger drawing when the interface is scaled up; the
+  -- member name (…-c60) would pin the small one and blur. Retail has no such
+  -- ring and gets the classic minimap-button ring.
   local ring = icon:CreateTexture(nil, "OVERLAY")
   local highlight = icon:CreateTexture(nil, "HIGHLIGHT")
   highlight:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
@@ -718,8 +677,7 @@ local function createIcon()
     highlight:SetSize(40, 40)
     highlight:SetPoint("CENTER")
   else
-    -- The classic minimap button: a 31 px button whose ring texture (a 64 px file with
-    -- the ring in its top left) is drawn 50 px from the top left, the icon inside it.
+    -- The classic minimap button; its ring sits in the top left of its texture.
     icon:SetSize(31, 31)
     ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     ring:SetSize(50, 50)
@@ -730,7 +688,7 @@ local function createIcon()
     disc:SetPoint("TOPLEFT", 7, -6)
     highlight:SetAllPoints()
   end
-  -- The glow sits behind the ring and reaches a little past it (media/glow.tga).
+  -- The glow sits behind the ring and reaches a little past it.
   glow = icon:CreateTexture(nil, "BACKGROUND")
   glow:SetTexture(MEDIA .. "glow")
   glow:SetSize(icon:GetWidth() * 1.45, icon:GetHeight() * 1.45)
@@ -752,10 +710,9 @@ local function createIcon()
     settings.ringAngle = math.atan2(cy - my, cx - mx)
     placeIcon()
   end
-  -- The icon's own scripts run under the guard like every handler: a fault in one is
-  -- named, and never a raw error.
+  -- The icon's scripts run under the guard like every handler.
   icon:SetScript("OnDragStart", WJ.guard("iconDrag", function(self)
-    if settings.locked then return end
+    if setting("locked") then return end
     if onRing() then
       self:SetScript("OnUpdate", WJ.guard("iconDrag", followCursor))
     else
@@ -769,15 +726,14 @@ local function createIcon()
       return
     end
     self:StopMovingOrSizing()
-    -- Kept in WidsithUI, not the client's layout cache.
+    -- Kept with the settings, not in the client's layout cache.
     self:SetUserPlaced(false)
     local point, _, relativePoint, x, y = self:GetPoint(1)
     local k = toIconUnits()
     settings.point = { point, relativePoint, x / k, y / k }
     if bubble and bubble:IsShown() then placeBubble() end
   end))
-  -- A left click saves: the flame that burns down to ask for a save is also the
-  -- answer. The right button opens the menu. A drag never counts as a click.
+  -- A left click saves, the right button opens the menu; a drag is never a click.
   icon:SetScript("OnClick", WJ.guard("iconClick", function(self, button)
     if button == "RightButton" then
       openMenu(self)
@@ -789,8 +745,8 @@ local function createIcon()
   icon:SetScript("OnEnter", WJ.guard("iconTooltip", showTooltip))
   icon:SetScript("OnLeave", WJ.guard("iconTooltip", function() GameTooltip:Hide() end))
 
-  -- Modern clients snap textures to the screen's pixel grid, which steps the edges of
-  -- anything drawn at a scale; the icon's parts are scaled, so they draw unsnapped.
+  -- Modern clients snap textures to the pixel grid, which steps the edges of
+  -- scaled ones, so the icon's parts draw unsnapped.
   local parts = { disc, ring, highlight, glow, halos[1], halos[2], embers[1], embers[2] }
   for _, layer in ipairs(layers) do parts[#parts + 1] = layer end
   for _, t in ipairs(parts) do
@@ -811,7 +767,7 @@ local function createIcon()
       if onRing() or not settings.point then placeIcon() end
     end))
   end
-  icon:SetShown(settings.shown)
+  icon:SetShown(setting("shown"))
   wasRecording = WJ.isRecording()
   updateIcon()
 end
@@ -825,7 +781,7 @@ local function check()
   updateIcon()
   if bubble and bubble:IsShown() then
     local expired = GetTime() >= bubbleHideAt and not bubble:IsMouseOver()
-    local unwanted = not bubbleForced and (not settings.remind or not calm())
+    local unwanted = not bubbleForced and (not setting("remind") or not calm())
     if unwanted or expired then
       hideBubble()
     else
@@ -833,21 +789,18 @@ local function check()
     end
     return
   end
-  if settings.remind and due() and GetTime() - lastReminder >= REMIND_GAP and calm() then
+  if due() and GetTime() - lastReminder >= REMIND_GAP and calm() then
     showBubble()
   end
 end
 
--- /widsith remind: show the reminder now, whatever the time or place, so it
--- can be seen without waiting half an hour in an inn.
+-- /widsith remind: show the reminder now, whatever the time or place.
 function WJ.showReminder()
   if icon then showBubble(true) updateIcon() end
 end
 
--- The addon menu by the minimap (TOC: AddonCompartmentFunc). Clicking the
--- entry opens the options panel, where a hidden icon can always be brought
--- back; on a client with no such panel it shows or hides the icon instead.
--- The player's action, from the addon compartment on the minimap.
+-- The addon compartment entry (TOC: AddonCompartmentFunc) opens the options
+-- panel, or on a client without one shows or hides the icon.
 Widsith_OnAddonCompartmentClick = WJ.attempt("compartment", function()
   if WJ.openOptions then
     WJ.openOptions()
@@ -863,12 +816,8 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:SetScript("OnEvent", WJ.guard("icon", function(self, event, ...)
   if event == "ADDON_LOADED" then
     if (...) ~= ADDON_NAME then return end
-    WidsithUI = WidsithUI or {}
-    settings = WidsithUI
-    if settings.shown == nil then settings.shown = true end
-    if settings.remind == nil then settings.remind = true end
-    -- Earlier versions drew the icon differently and at another scale, so a place
-    -- saved for them lands somewhere else now: start beside the day/night indicator, once.
+    settings = WJ.loadSettings()
+    -- A place saved for an older icon style lands elsewhere: start afresh, once.
     if settings.iconStyle ~= 4 then
       settings.point = nil
       settings.iconStyle = 4
@@ -877,18 +826,16 @@ frame:SetScript("OnEvent", WJ.guard("icon", function(self, event, ...)
   elseif event == "PLAYER_LOGIN" then
     WJ.guard("icon", createIcon)()
     C_Timer.NewTicker(CHECK_EVERY, WJ.guard("saveReminder", check))
-    -- The recorder calls this the instant a session starts, at login, after a
-    -- reload or on resume: the flame lights then, with the flare.
+    -- The recorder calls this when a session starts: the flame lights then.
     WJ.onRecordingStarted = updateIcon
     if type(ReloadUI) == "function" then hooksecurefunc("ReloadUI", WJ.guard("saveEmote", emoteOnSave)) end
     self:UnregisterEvent("PLAYER_LOGIN")
   elseif event == "PLAYER_ENTERING_WORLD" then
-    -- A reload that was asked for as a save: say so. (The flame is lit by the
-    -- recorder's call above, not here: this frame may hear the event before the
-    -- recorder's does.)
+    -- A reload asked for as a save: say so. The flame is lit by the recorder's
+    -- call, since this frame may hear the event first.
     local _, isReload = ...
-    if isReload and settings.saving then
-      settings.saving = nil
+    if isReload and WidsithUI.saving then
+      WidsithUI.saving = nil
       say("saved.")
     end
   end
