@@ -81,12 +81,13 @@ end)
 test("the welcome is said once, at the first login on the account", function(game)
   game.login()
   game.advance(4)
-  expect(game.said("Thanks for installing Widsith."), "no welcome at the first login")
-  expect(game.said("Click the icon by the minimap to save at any time, right-click it for the settings, or type /widsith help."),
-    "the welcome doesn't say how to save and where the settings are")
-  local lines = 0
-  for _, line in ipairs(game.chat) do if line:find("Thanks for installing", 1, true) or line:find("Click the icon by the minimap", 1, true) then lines = lines + 1 end end
-  eq(lines, 2, "the welcome's lines: two, no more")
+  local welcome = game.said("Thanks for installing Widsith.")
+  expect(welcome ~= nil, "no welcome at the first login")
+  expect(welcome and welcome:find("Click the icon by the minimap to save at any time, right-click it for the settings, or type /widsith help.", 1, true),
+    "the welcome doesn't say how to save and where the settings are, in the same message")
+  local messages = 0
+  for _, line in ipairs(game.chat) do if line:find("Thanks for installing", 1, true) or line:find("Click the icon by the minimap", 1, true) then messages = messages + 1 end end
+  eq(messages, 1, "the welcome's chat messages: one, its lines under one name")
   eq(game.G.WidsithAccount.seenVersion, game.version, "the version the account has seen")
   game.clearChat()
   game.reload()
@@ -97,22 +98,28 @@ test("the welcome is said once, at the first login on the account", function(gam
   expect(not game.said("Thanks for installing"), "the welcome was said again on another character")
 end)
 
-test("a new version is announced once per account in one line that points at the About page, not as a welcome", function(game)
+test("a new version is announced once per account as one message listing what changed, not as a welcome", function(game)
   game.saved = { WidsithAccount = { settings = {}, seenVersion = "0.6.3" } }
   game.login()
   local from = #game.chat
   game.advance(4)
   local said = chatSince(game, from)
   expect(not game.said("Thanks for installing"), "an upgrade was welcomed as a first use")
-  eq(said[1], "Widsith " .. game.version .. " is installed. What's new is on the About page, under Options, AddOns, Widsith.", "the version line")
-  eq(#said, 1, "lines said for the new version: one, the list is the About page's")
+  eq(#said, 1, "chat messages for the new version: one, its lines under one name")
+  local lines = {}
+  for line in ((said[1] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+  eq(lines[1], "Widsith " .. game.version .. " is installed. What's new:", "the message's first line")
+  expect(#lines >= 3 and lines[2]:find("^  %- ") ~= nil, "the notes don't follow as a list: " .. tostring(lines[2]))
+  for _, note in ipairs(game.addon.whatsNew()) do
+    expect(said[1]:find("  - " .. note, 1, true), "a note is missing from the message: " .. note)
+  end
   -- The About page lists the notes under a heading with the version.
   local about = game.panelRow("About")
   local texts = {}
   for _, r in ipairs(about.frame.regions) do texts[#texts + 1] = r.text end
   local joined = table.concat(texts, "\n")
   expect(joined:find("What's new in " .. game.version, 1, true), "the About page has no What's new heading")
-  expect(joined:find("Screenshot highlights are on", 1, true), "the About page doesn't list the notes")
+  expect(joined:find("Screenshot highlights on by default", 1, true), "the About page doesn't list the notes")
   game.clearChat()
   game.loginAs("Maela", game.profile.surname and "Dunwood" or nil)
   game.advance(4)
