@@ -803,6 +803,11 @@ local function newGame(profileName, dir, version)
     G.CHAT_FRAMES = { "ChatFrame1" }
     G.ChatFrame1 = newWidget(game, "Frame", "ChatFrame1", G.UIParent)
     G.ChatFrame1.alpha = 0.8
+    -- The default chat window, 400 wide in a 14-point font; a font string here measures eight
+    -- units a character, so a dash is eight.
+    G.ChatFrame1.width, G.ChatFrame1.height = 400, 160
+    G.ChatFrame1.GetFont = function() return "Fonts\\FRIZQT__.TTF", 14, "" end
+    G.DEFAULT_CHAT_FRAME = G.ChatFrame1
     G.FriendsFrame = newWidget(game, "Frame", "FriendsFrame", G.UIParent)
     G.Screenshot = function()
       world.shotsTaken = world.shotsTaken + 1
@@ -908,6 +913,10 @@ local function newGame(profileName, dir, version)
         absentGlobals[path] = true
       end
     end
+
+    -- A test's own change to the game, made again at every build (a login, a reload), since
+    -- each build starts from the stubs: game.onBuild = function(G) ... end.
+    if game.onBuild then game.onBuild(G) end
 
     -- Anything not stubbed: functions that return nothing, namespaces with such functions; a
     -- global the profile says this client lacks answers nil.

@@ -88,11 +88,15 @@ test("the welcome is said once, at the first login on the account", function(gam
     "the welcome doesn't open with the flame and the thanks: " .. tostring(welcome))
   -- A rule above and below, each a message of its own so it sits at the margin, and the block
   -- between them with a blank line between its points, each behind a bullet in the flame's colour.
-  local RULE = "----------------------------------------"
+  -- The stand-in's chat window is 400 wide with a dash 8 wide: (400 - 24) / 8, rounded down.
+  local RULE = string.rep("-", 47)
+  local function plain(line) return (line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
   local at
   for i, line in ipairs(game.chat) do if line == welcome then at = i end end
-  eq(game.chat[at - 1], RULE, "the rule above the welcome")
-  eq(game.chat[at + 1], RULE .. "\n", "the rule below the welcome, closing with a blank line")
+  eq(plain(game.chat[at - 1]), RULE, "the rule above the welcome, as wide as the chat window")
+  eq(plain(game.chat[at + 1]), RULE .. "\n", "the rule below the welcome, closing with a blank line")
+  -- Each dash under its own colour, the flame's dark orange first and its cream last.
+  expect(game.chat[at - 1]:find("^|cffb9521a%-|r") and game.chat[at - 1]:find("|cfffff4d6%-|r$"), "the rule isn't the flame's colours from dark orange to cream: " .. game.chat[at - 1]:sub(1, 30))
   local lines = {}
   for line in (((welcome or "") .. "\n"):gsub("|T[^|]*|t ?", "")):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
   local B = "  |cfff4b04a\226\128\162|r "
@@ -127,7 +131,7 @@ test("a new version is announced once per account as one message listing what ch
   local said = chatSince(game, 0)
   expect(not game.said("Thank you for installing"), "an upgrade was welcomed as a first use")
   eq(#said, 3, "chat messages at the login: the rule, the news, the rule")
-  local RULE = "----------------------------------------"
+  local RULE = string.rep("-", 47)
   eq(said[1], RULE, "the rule above")
   eq(said[3], RULE .. "\n", "the rule below, closing with a blank line")
   local lines = {}
@@ -187,4 +191,14 @@ test("with Show chat messages off, nothing is said at login, the welcome include
   game.login()
   game.advance(8)
   eq(#game.chat, 0, "lines said with chat messages off")
+end)
+
+test("the rule is forty dashes when the chat window's font can't be read", function(game)
+  game.saved = { WidsithAccount = { settings = {}, seenVersion = "0.6.3" } }
+  -- No font to measure with: a chat frame whose GetFont isn't a function, at every build.
+  game.onBuild = function(G) G.ChatFrame1.GetFont = false end
+  game.login()
+  game.advance(4)
+  local said = chatSince(game, 0)
+  eq(said[1], string.rep("-", 40), "the rule without a measure")
 end)
