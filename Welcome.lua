@@ -9,13 +9,20 @@
 -- read in order. Through the same channel as the recorder's news, so "Show
 -- chat messages" off keeps it quiet. The About page lists the same notes.
 
-local _, WJ = ...
+local ADDON_NAME, WJ = ...
 
 local DELAY = 3   -- s after entering the world
 
+-- The addon's emblem, drawn in the line at the chat font's height, so the
+-- message starts with the icon the text tells the player to click.
+local EMBLEM = "|TInterface\\AddOns\\" .. ADDON_NAME .. "\\media\\emblem:16:16|t"
+local NAME = "|cff33ff99" .. WJ.NAME .. "|r"
+
 local WELCOME = {
-  "Thanks for installing Widsith. It keeps a record of your character's journey as you play; replay it at widsith.app.",
-  "The game saves the recording when you log out or reload. Click the icon by the minimap to save at any time, right-click it for the settings, or type /widsith help.",
+  EMBLEM .. " " .. NAME .. " is now recording. Thank you for installing it.",
+  "The recording is saved whenever you log out or reload. Click the icon by the minimap to save at any time.",
+  "To watch the replay, drop the file Widsith.lua on widsith.app, or let the Widsith Uploader from the same site keep it in sync for you.",
+  "More, and where to find help, is under Options, AddOns, Widsith.",
 }
 
 -- What changed that a player would notice, by version, a few words each. The
@@ -43,9 +50,11 @@ function WJ.whatsNew()
   return out
 end
 
--- Lines as one message, the first on the name's line and the rest under it.
-local function asOne(lines)
-  return table.concat(lines, "\n")
+-- Lines as one message with the emblem and the name as its heading, through
+-- the recorder's channel, which honours "Show chat messages"; the heading is
+-- the message's own, so no prefix is put before it.
+local function announce(lines)
+  WJ.say(table.concat(lines, "\n"), true)
 end
 
 local function tell()
@@ -54,15 +63,13 @@ local function tell()
   local version = WJ.VERSION
   if account.seenVersion == version then return end
   if account.seenVersion == nil and not account.usedBefore then
-    WJ.say(asOne(WELCOME))
-  elseif NOTES[version] then
-    local lines = { version .. " is installed. What's new:" }
-    for _, note in ipairs(NOTES[version]) do
+    announce(WELCOME)
+  else
+    local lines = { EMBLEM .. " " .. NAME .. " " .. version .. " is installed." .. (NOTES[version] and " What's new:" or "") }
+    for _, note in ipairs(NOTES[version] or {}) do
       if note.chat then lines[#lines + 1] = "  - " .. note[1] end
     end
-    WJ.say(asOne(lines))
-  else
-    WJ.say(version .. " is installed.")
+    announce(lines)
   end
   account.seenVersion = version
 end

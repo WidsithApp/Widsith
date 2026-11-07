@@ -163,10 +163,10 @@ local answering = false   -- true while a /widsith command the player typed is r
 
 -- The recorder's own news (a session starting, a pause), which the player can switch off
 -- in the settings ("Show chat messages"). The answer to a command the player typed
--- always shows.
-function WJ.say(text)
+-- always shows. bare: the text carries its own heading, so the name isn't put before it.
+function WJ.say(text, bare)
   local settings = WJ.settings
-  if answering or settings == nil or settings.chat ~= false then print(PREFIX .. text) end
+  if answering or settings == nil or settings.chat ~= false then print(bare and text or (PREFIX .. text)) end
 end
 
 -- A real problem, which always shows.

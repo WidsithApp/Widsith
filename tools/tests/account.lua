@@ -2,9 +2,10 @@
 -- (WidsithAccount), the pause and the pictures taken kept with the character (WidsithUI), and
 -- what the player is told once per account (Welcome.lua).
 
+-- Chat since a point, with the colour codes and the emblem's texture taken out.
 local function chatSince(game, from)
   local out = {}
-  for i = from + 1, #game.chat do out[#out + 1] = (game.chat[i]:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+  for i = from + 1, #game.chat do out[#out + 1] = (game.chat[i]:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T[^|]*|t ?", "")) end
   return out
 end
 
@@ -81,21 +82,24 @@ end)
 test("the welcome is said once, at the first login on the account", function(game)
   game.login()
   game.advance(4)
-  local welcome = game.said("Thanks for installing Widsith.")
+  local welcome = game.said("is now recording. Thank you for installing it.")
   expect(welcome ~= nil, "no welcome at the first login")
-  expect(welcome and welcome:find("Click the icon by the minimap to save at any time, right-click it for the settings, or type /widsith help.", 1, true),
-    "the welcome doesn't say how to save and where the settings are, in the same message")
+  expect(welcome and welcome:find("^|TInterface\\AddOns\\Widsith\\media\\emblem:16:16|t |cff33ff99Widsith|r is now recording"),
+    "the welcome doesn't open with the emblem and the name: " .. tostring(welcome))
+  expect(welcome and welcome:find("Click the icon by the minimap to save at any time.", 1, true), "the welcome doesn't say how to save")
+  expect(welcome and welcome:find("drop the file Widsith.lua on widsith.app", 1, true), "the welcome doesn't say where the replay is")
+  expect(welcome and welcome:find("under Options, AddOns, Widsith.", 1, true), "the welcome doesn't say where the settings and help are")
   local messages = 0
-  for _, line in ipairs(game.chat) do if line:find("Thanks for installing", 1, true) or line:find("Click the icon by the minimap", 1, true) then messages = messages + 1 end end
-  eq(messages, 1, "the welcome's chat messages: one, its lines under one name")
+  for _, line in ipairs(game.chat) do if line:find("Thank you for installing", 1, true) or line:find("Click the icon by the minimap", 1, true) then messages = messages + 1 end end
+  eq(messages, 1, "the welcome's chat messages: one, its lines under one heading")
   eq(game.G.WidsithAccount.seenVersion, game.version, "the version the account has seen")
   game.clearChat()
   game.reload()
   game.advance(4)
-  expect(not game.said("Thanks for installing"), "the welcome was said again after a reload")
+  expect(not game.said("Thank you for installing"), "the welcome was said again after a reload")
   game.loginAs("Maela", game.profile.surname and "Dunwood" or nil)
   game.advance(4)
-  expect(not game.said("Thanks for installing"), "the welcome was said again on another character")
+  expect(not game.said("Thank you for installing"), "the welcome was said again on another character")
 end)
 
 test("a new version is announced once per account as one message listing what changed, not as a welcome", function(game)
@@ -104,7 +108,7 @@ test("a new version is announced once per account as one message listing what ch
   local from = #game.chat
   game.advance(4)
   local said = chatSince(game, from)
-  expect(not game.said("Thanks for installing"), "an upgrade was welcomed as a first use")
+  expect(not game.said("Thank you for installing"), "an upgrade was welcomed as a first use")
   eq(#said, 1, "chat messages for the new version: one, its lines under one name")
   local lines = {}
   for line in ((said[1] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
@@ -149,7 +153,7 @@ test("a player who used the addon before this version is told the version, not w
   game.saved = { WidsithUI = { shown = true, remind = true, iconStyle = 4 } }
   game.login()
   game.advance(4)
-  expect(not game.said("Thanks for installing"), "an existing player was welcomed as new")
+  expect(not game.said("Thank you for installing"), "an existing player was welcomed as new")
   expect(game.said(game.version .. " is installed."), "an existing player wasn't told the version")
 end)
 
