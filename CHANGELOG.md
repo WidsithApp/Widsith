@@ -2,7 +2,7 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
-## 0.7.0 · not yet handed out
+## 0.7.0 · 2026-11-07
 
 - Your settings are shared by all your characters. The first character you log in on after installing this version lends its settings to the account; what other characters had set is not kept.
 - Pause and Resume are now Stop and Start, which is what they do: a stopped recording records nothing, and nothing in between can be caught up. A character whose recording you stopped stays stopped across reloads and logins until you start it again, from the icon or with /widsith start.
