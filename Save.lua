@@ -8,7 +8,7 @@
 --   * It lights with a flare when recording starts (at login, after a reload,
 --     or on resume), then burns quietly, breathing a little.
 --   * While the recording goes unsaved it burns down, from its base, over
---     half an hour, until only an ember is left. Then the ring glows, and a
+--     45 minutes, until only an ember is left. Then the ring glows, and a
 --     quiet reminder appears beside it once the character is resting somewhere
 --     safe. Either can be switched off in the menu: with reminders off the
 --     flame stays full, with animations off nothing moves.
@@ -18,15 +18,16 @@
 --     disc.
 --
 -- Nothing reloads unless the player clicks: the icon, the reminder, or
--- /widsith save. Settings live in WidsithUI, beside the recording in the same
--- per-character file; the site reads only WidsithDB. Nothing here is written
--- to the recording. The ring and the highlight are the game's own art, loaded
--- from the client; the flame, the disc and the glow are drawn for the addon
+-- /widsith save. The settings are the account's (WidsithAccount), shared by
+-- every character; a save under way and the last emote are the character's
+-- (WidsithUI). The site reads only WidsithDB. Nothing here is written to the
+-- recording. The ring and the highlight are the game's own art, loaded from
+-- the client; the flame, the disc and the glow are drawn for the addon
 -- (media/).
 
 local ADDON_NAME, WJ = ...
 
-local BURN_TIME    = 30 * 60 -- seconds of unsaved play from a full flame to an ember
+local BURN_TIME    = 45 * 60 -- seconds of unsaved play from a full flame to an ember
 local REMIND_GAP   = 10 * 60 -- seconds from one reminder to the next
 local SHOW_FOR     = 30      -- seconds an ignored reminder stays up
 local CHECK_EVERY  = 5
@@ -35,7 +36,13 @@ local floor, format, max, min = math.floor, string.format, math.max, math.min
 local PREFIX = WJ.PREFIX
 local MEDIA = "Interface\\AddOns\\" .. ADDON_NAME .. "\\media\\"
 
-local settings            -- WidsithUI
+-- What each setting is until the player changes it. The one list for the
+-- menu, the settings panel and its Defaults button.
+local DEFAULTS = { shown = true, remind = true, animate = true, chat = true, emote = false, onRing = true, locked = false,
+  iconSize = 1, screenshots = true, shotsChat = true }
+WJ.DEFAULTS = DEFAULTS
+
+local settings            -- the account's settings (WidsithAccount.settings)
 local icon, bubble
 local lastReminder = -math.huge
 local bubbleHideAt
@@ -45,6 +52,13 @@ local bubbleForced       -- shown by /widsith remind: only the timer hides it
 -- "Show chat messages"); a direct answer to something the player did prints.
 local function say(text)
   if WJ.say then WJ.say(text) else print(PREFIX .. text) end
+end
+
+-- A setting as the player has it, or its default while they haven't touched it.
+local function setting(key)
+  local value = settings and settings[key]
+  if value == nil then return DEFAULTS[key] end
+  return value
 end
 
 local function duration(seconds)
@@ -79,7 +93,7 @@ local save = WJ.attempt("save", function()
     print(PREFIX .. "not reloading: the game didn't load the earlier recording at the last reload, and a reload now would replace it. Copy the file out of SavedVariables first.")
     return
   end
-  settings.saving = true
+  WidsithUI.saving = true
   ReloadUI()
 end)
 
@@ -89,7 +103,7 @@ end)
 -- /reload, another addon). Off until switched on in the menu or the options
 -- panel. At most once a minute, so a run of reloads sends one: a reload forgets
 -- everything the addon holds, so the time of the last emote is kept with the
--- settings, which the same reload writes out. Never in combat or in an
+-- character's state, which the same reload writes out. Never in combat or in an
 -- instance, and never while the game forbids addons to send chat. The game
 -- puts the character's name in front.
 local EMOTES = {
@@ -101,13 +115,13 @@ local EMOTES = {
 local EMOTE_GAP = 60 -- seconds between two emotes, at the least
 
 local function emoteOnSave()
-  if not settings or settings.emote ~= true or not WJ.isRecording() then return end
+  if setting("emote") ~= true or not WJ.isRecording() then return end
   if InCombatLockdown() or UnitAffectingCombat("player") or IsInInstance() then return end
   if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then return end
   if type(SendChatMessage) ~= "function" then return end
   local now = time()
-  if settings.emotedAt and now - settings.emotedAt < EMOTE_GAP then return end
-  if pcall(SendChatMessage, EMOTES[math.random(#EMOTES)], "EMOTE") then settings.emotedAt = now end
+  if WidsithUI.emotedAt and now - WidsithUI.emotedAt < EMOTE_GAP then return end
+  if pcall(SendChatMessage, EMOTES[math.random(#EMOTES)], "EMOTE") then WidsithUI.emotedAt = now end
 end
 
 ---------------------------------------------------------------------------
@@ -208,7 +222,6 @@ local SIZES = {
   { 1.4, "Medium" },
   { 1.8, "Large" },
 }
-local DEFAULT_SIZE = 1
 local LARGE = 1.8     -- from here up, the large strip
 local disc, layers, halos, embers, glow, pulse
 local discSize       -- the disc's size in the icon's units
@@ -220,11 +233,11 @@ local function rgb(hex)
 end
 
 local function size()
-  return settings.iconSize or DEFAULT_SIZE
+  return setting("iconSize")
 end
 
 local function animate()
-  return settings.animate ~= false
+  return setting("animate")
 end
 
 -- A cell of the strip onto a texture.
@@ -249,13 +262,13 @@ end
 -- read the file back (WJ.savesNotLoaded): a reload then replaces the recording
 -- on disk, so nothing here may ask for one.
 local function gauge()
-  if not WJ.isRecording() or not settings.remind or WJ.savesNotLoaded then return 1 end
+  if not WJ.isRecording() or not setting("remind") or WJ.savesNotLoaded then return 1 end
   local burnt = min(1, WJ.secondsSinceSave() / BURN_TIME)
   return 1 - burnt * (1 - EMBER)
 end
 
 local function due()
-  return WJ.isRecording() and settings.remind and not WJ.savesNotLoaded and WJ.secondsSinceSave() >= BURN_TIME
+  return WJ.isRecording() and setting("remind") and not WJ.savesNotLoaded and WJ.secondsSinceSave() >= BURN_TIME
 end
 
 -- Lay the layers out for the current size, drawing and gauge: each stands on
@@ -414,7 +427,7 @@ end
 -- as minimap buttons traditionally move. Worked in screen pixels, so the minimap's
 -- and the icon's scales don't matter.
 local function onRing()
-  return settings.onRing ~= false and Minimap ~= nil
+  return setting("onRing") and Minimap ~= nil
 end
 
 local function screenCenter(frame)
@@ -461,7 +474,7 @@ local function placeIcon()
 end
 
 function WJ.iconShown()
-  return settings and settings.shown
+  return settings ~= nil and setting("shown")
 end
 
 function WJ.setIconShown(shown)
@@ -505,8 +518,7 @@ end
 -- The settings, as the menu here and the options panel (Options.lua) read and
 -- change them: shown, remind, animate, chat, emote, onRing, locked, iconSize,
 -- screenshots and shotsChat. Every change goes through here, so the icon follows
--- at once whichever asked. Emote, screenshots and shotsChat are off unless they
--- have been set true; the others are on unless false.
+-- at once whichever asked. A setting the player hasn't touched is its default.
 local function setOnRing(on)
   if onRing() and not on then
     -- Leaving the ring: stay exactly where it is, now free to drag anywhere.
@@ -522,18 +534,15 @@ WJ.ICON_SIZES = SIZES
 
 function WJ.getIconSetting(key)
   if not settings then return nil end
-  if key == "animate" then return animate() end
-  if key == "chat" then return settings.chat ~= false end
-  if key == "emote" then return settings.emote == true end
   if key == "onRing" then return onRing() end
   if key == "iconSize" then return size() end
-  return settings[key] and true or false
+  return setting(key)
 end
 
 function WJ.setIconSetting(key, value)
   if not settings then return end
   if key == "shown" then
-    if value ~= (settings.shown and true or false) then WJ.setIconShown(value) end
+    if value ~= setting("shown") then WJ.setIconShown(value) end
     return
   end
   if not icon then
@@ -585,17 +594,20 @@ local openMenu = WJ.attempt("menu", function(self)
         function() WJ.setIconSetting(key, not WJ.getIconSetting(key)) end)
     end
     checkbox(root, "Remind me to save", "remind")
-    checkbox(root, "Animations", "animate")
-    checkbox(root, "Attach to minimap", "onRing")
-    checkbox(root, "Lock position", "locked")
-    checkbox(root, "Show chat messages", "chat")
     checkbox(root, "Emote when saving", "emote")
     local shots = root:CreateButton("Screenshots")
     checkbox(shots, "Screenshot highlights", "screenshots")
     checkbox(shots, "Show chat in the pictures", "shotsChat")
-    local sizes = root:CreateButton("Icon size")
+    -- The icon's own settings together, the sizes under a line in the same
+    -- submenu rather than one deeper. "Show chat messages" is the panel's
+    -- alone: it is set once, not reached for.
+    local iconMenu = root:CreateButton("Icon")
+    checkbox(iconMenu, "Animations", "animate")
+    checkbox(iconMenu, "Attach to minimap", "onRing")
+    checkbox(iconMenu, "Lock position", "locked")
+    if iconMenu.CreateDivider then iconMenu:CreateDivider() end
     for _, entry in ipairs(SIZES) do
-      sizes:CreateRadio(entry[2],
+      iconMenu:CreateRadio(entry[2],
         function() return size() == entry[1] end,
         function() WJ.setIconSetting("iconSize", entry[1]) end)
     end
@@ -755,7 +767,7 @@ local function createIcon()
   -- The icon's own scripts run under the guard like every handler: a fault in one is
   -- named, and never a raw error.
   icon:SetScript("OnDragStart", WJ.guard("iconDrag", function(self)
-    if settings.locked then return end
+    if setting("locked") then return end
     if onRing() then
       self:SetScript("OnUpdate", WJ.guard("iconDrag", followCursor))
     else
@@ -769,7 +781,7 @@ local function createIcon()
       return
     end
     self:StopMovingOrSizing()
-    -- Kept in WidsithUI, not the client's layout cache.
+    -- Kept with the settings, not in the client's layout cache.
     self:SetUserPlaced(false)
     local point, _, relativePoint, x, y = self:GetPoint(1)
     local k = toIconUnits()
@@ -811,7 +823,7 @@ local function createIcon()
       if onRing() or not settings.point then placeIcon() end
     end))
   end
-  icon:SetShown(settings.shown)
+  icon:SetShown(setting("shown"))
   wasRecording = WJ.isRecording()
   updateIcon()
 end
@@ -825,7 +837,7 @@ local function check()
   updateIcon()
   if bubble and bubble:IsShown() then
     local expired = GetTime() >= bubbleHideAt and not bubble:IsMouseOver()
-    local unwanted = not bubbleForced and (not settings.remind or not calm())
+    local unwanted = not bubbleForced and (not setting("remind") or not calm())
     if unwanted or expired then
       hideBubble()
     else
@@ -833,13 +845,13 @@ local function check()
     end
     return
   end
-  if settings.remind and due() and GetTime() - lastReminder >= REMIND_GAP and calm() then
+  if due() and GetTime() - lastReminder >= REMIND_GAP and calm() then
     showBubble()
   end
 end
 
 -- /widsith remind: show the reminder now, whatever the time or place, so it
--- can be seen without waiting half an hour in an inn.
+-- can be seen without waiting three quarters of an hour in an inn.
 function WJ.showReminder()
   if icon then showBubble(true) updateIcon() end
 end
@@ -863,10 +875,7 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:SetScript("OnEvent", WJ.guard("icon", function(self, event, ...)
   if event == "ADDON_LOADED" then
     if (...) ~= ADDON_NAME then return end
-    WidsithUI = WidsithUI or {}
-    settings = WidsithUI
-    if settings.shown == nil then settings.shown = true end
-    if settings.remind == nil then settings.remind = true end
+    settings = WJ.loadSettings()
     -- Earlier versions drew the icon differently and at another scale, so a place
     -- saved for them lands somewhere else now: start beside the day/night indicator, once.
     if settings.iconStyle ~= 4 then
@@ -887,8 +896,8 @@ frame:SetScript("OnEvent", WJ.guard("icon", function(self, event, ...)
     -- recorder's call above, not here: this frame may hear the event before the
     -- recorder's does.)
     local _, isReload = ...
-    if isReload and settings.saving then
-      settings.saving = nil
+    if isReload and WidsithUI.saving then
+      WidsithUI.saving = nil
       say("saved.")
     end
   end

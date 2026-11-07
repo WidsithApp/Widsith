@@ -173,7 +173,7 @@ local HELP = {
   "Widsith /widsith help shows this list.",
   "Widsith /widsith about says what Widsith is.",
   "Widsith /widsith size says how big the recording is, and which sessions are the largest.",
-  "Widsith /widsith pause stops recording until you resume, log in again or reload.",
+  "Widsith /widsith pause stops recording on this character until you resume.",
   "Widsith /widsith resume starts recording again.",
   "Widsith /widsith save reloads the interface, which writes the recording to disk.",
   "Widsith /widsith icon shows or hides the recording icon.",
@@ -261,7 +261,7 @@ test("/widsith pause pauses, and a second pause says it already is", function(ga
   game.advance(8)
   game.slash("pause")
   expect(not game.addon.isRecording(), "still recording after /widsith pause")
-  expect(game.said("recording paused. Nothing is recorded until you resume, log in again or reload."), "the pause wasn't said")
+  expect(game.said("recording paused on this character until you resume it, from the icon or with /widsith resume."), "the pause wasn't said")
   eq(game.last("END").fields[2], "pause", "the END line's reason")
   local from = #game.chat
   game.slash("pause")

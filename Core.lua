@@ -162,12 +162,11 @@ local errorCount = 0
 local answering = false   -- true while a /widsith command the player typed is running
 
 -- The recorder's own news (a session starting, a pause), which the player can switch off
--- in the icon's menu. WidsithUI is that menu's settings table; it is created when the
--- addon loads, after this file has run, so it is looked up each time. The answer to a
--- command the player typed always shows.
+-- in the settings ("Show chat messages"). The answer to a command the player typed
+-- always shows.
 function WJ.say(text)
-  local ui = WidsithUI
-  if answering or ui == nil or ui.chat ~= false then print(PREFIX .. text) end
+  local settings = WJ.settings
+  if answering or settings == nil or settings.chat ~= false then print(PREFIX .. text) end
 end
 
 -- A real problem, which always shows.
@@ -329,20 +328,31 @@ function WJ.endSession(reason)
 end
 
 -- Pause: close this session with END … pause and record nothing until
--- Resume, which opens a new session with a fresh baseline. A pause never
--- outlives the addon load: the next login or reload records as always, so it
--- can't be forgotten for longer than one sitting.
+-- Resume, which opens a new session with a fresh baseline. The pause is the
+-- character's and is kept with the character's file, so a login or a reload
+-- finds it still paused: a player who paused said what they wanted, and the
+-- only other way to be sure nothing is recorded would be to disable the addon.
 function WJ.pause()
   if not session then return end
   WJ.endSession("pause")
   paused = true
-  WJ.say("recording paused. Nothing is recorded until you resume, log in again or reload.")
+  WidsithUI.paused = true
+  WJ.say("recording paused on this character until you resume it, from the icon or with /widsith resume.")
 end
 
 function WJ.resume()
   if session then return end
+  WidsithUI.paused = nil
   WJ.startSession(false, false, true)
   if WJ.onResume then WJ.guard("resume", WJ.onResume)() end
+end
+
+-- A login or a reload on a character that was left paused: nothing starts, and
+-- the player is told once, since the icon shows it out as well.
+local function stayPaused()
+  paused = true
+  WJ.say("is paused on this character. Resume recording from the icon or with /widsith resume.")
+  if WJ.onRecordingStarted then WJ.guard("recordingStarted", WJ.onRecordingStarted)() end
 end
 
 ---------------------------------------------------------------------------
@@ -537,6 +547,38 @@ function WJ.noteSavesNotLoaded()
 end
 
 ---------------------------------------------------------------------------
+-- The saved tables
+---------------------------------------------------------------------------
+
+-- Three tables the game saves. WidsithDB is the recording, one per character.
+-- WidsithUI is the character's own state beside it: what has had its picture,
+-- whether it is paused, a save under way. WidsithAccount is shared by every
+-- character of the account: the settings, and what the player has been told
+-- once. The settings moved there from WidsithUI; a character's old ones are
+-- taken as the account's the first time, and the account remembers that it
+-- was in use before, so the welcome isn't said to a player who already knows.
+local SETTING_KEYS = { "shown", "remind", "animate", "chat", "emote", "onRing", "locked", "iconSize",
+  "screenshots", "shotsChat", "point", "ringAngle", "iconStyle" }
+
+function WJ.loadSettings()
+  if WJ.settings then return WJ.settings end
+  WidsithAccount = WidsithAccount or {}
+  WidsithUI = WidsithUI or {}
+  if not WidsithAccount.settings then
+    WidsithAccount.settings = {}
+    if WidsithUI.iconStyle ~= nil then
+      for _, key in ipairs(SETTING_KEYS) do
+        WidsithAccount.settings[key] = WidsithUI[key]
+      end
+      WidsithAccount.usedBefore = true
+    end
+  end
+  for _, key in ipairs(SETTING_KEYS) do WidsithUI[key] = nil end
+  WJ.settings = WidsithAccount.settings
+  return WJ.settings
+end
+
+---------------------------------------------------------------------------
 -- Boot
 ---------------------------------------------------------------------------
 
@@ -554,6 +596,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
     db.format   = WJ.FORMAT
     db.sessions = db.sessions or {}
     WJ.db = db
+    run("settings", WJ.loadSettings)
     WJ.registerEvents(self)
     if WJ.installHooks then run("hooks", WJ.installHooks) end
     if WJ.installMoneyHooks then run("money hooks", WJ.installMoneyHooks) end
@@ -565,7 +608,11 @@ frame:SetScript("OnEvent", function(self, event, ...)
       -- means the client didn't read it back, or the addon was only just enabled.
       -- Either way the file is about to lose what it had.
       local savesNotLoaded = isReload and #db.sessions == 0
-      run("session", WJ.startSession, isLogin, isReload)
+      if WidsithUI.paused then
+        run("session", stayPaused)
+      else
+        run("session", WJ.startSession, isLogin, isReload)
+      end
       if savesNotLoaded then WJ.noteSavesNotLoaded() end
     end
     run(event, WJ.onEnteringWorld, isLogin, isReload)
@@ -739,7 +786,7 @@ local HELP = {
   { "help", "shows this list." },
   { "about", "says what " .. WJ.NAME .. " is." },
   { "size", "says how big the recording is, and which sessions are the largest." },
-  { "pause", "stops recording until you resume, log in again or reload." },
+  { "pause", "stops recording on this character until you resume." },
   { "resume", "starts recording again." },
   { "save", "reloads the interface, which writes the recording to disk." },
   { "icon", "shows or hides the recording icon." },

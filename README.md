@@ -20,7 +20,7 @@ It keeps no chat: nothing you or other players type is written. Names are kept b
 
 Widsith never connects to anything, as no WoW addon can. Everything stays on your computer. The recording is kept in its saved file, which the game writes each time you log out or reload the interface. You take that file to widsith.app yourself, or let the Widsith Uploader app send it for you. The screenshots Widsith takes, if you turn them on, are pictures only, and they stay in the game's own Screenshots folder beside yours.
 
-The saved file is `WTF\Account\<account>\<realm>\<character>\SavedVariables\Widsith.lua`, one per character.
+The saved file is `WTF\Account\<account>\<realm>\<character>\SavedVariables\Widsith.lua`, one per character; on WoW Forever the realm's folder is a number. The settings, shared by all your characters, are in a second, small `Widsith.lua` one level up, in `WTF\Account\<account>\SavedVariables`, which holds no recording.
 
 ## Installing
 
@@ -41,7 +41,7 @@ Each version is also on this repository's Releases page as a zip, built from its
 - `/widsith help` lists the commands.
 - `/widsith about` gives the version, what Widsith is, and the website.
 - `/widsith size` says how big the recording is and which sessions are the largest.
-- `/widsith pause` stops recording until `/widsith resume`, or until the next login or reload.
+- `/widsith pause` stops recording on this character until `/widsith resume`, through reloads and logins.
 - `/widsith save` reloads the interface so the game writes the saved file.
 - `/widsith icon` shows or hides the recording icon.
 - `/widsith options` opens the settings, also found under Options, AddOns, Widsith.
@@ -50,13 +50,13 @@ Each version is also on this repository's Releases page as a zip, built from its
 
 ## The recording icon and saving
 
-The game writes an addon's saved file only when you log out or reload the interface, so play since the last save is lost if the game closes unexpectedly. The icon by the minimap shows how much play is unsaved. Its flame is lit while Widsith records and grows shorter over half an hour of unsaved play. After that the ring around it glows, and Widsith offers to save once you are resting and out of combat.
+The game writes an addon's saved file only when you log out or reload the interface, so play since the last save is lost if the game closes unexpectedly. The icon by the minimap shows how much play is unsaved. Its flame is lit while Widsith records and grows shorter over 45 minutes of unsaved play. After that the ring around it glows, and Widsith offers to save once you are resting and out of combat.
 
-A left click on the icon saves by reloading the interface. A right click opens a menu to pause or resume, turn the reminder, the animations, the chat messages or the emote when saving on and off, attach the icon to the minimap or lock it in place, change its size, set the screenshot settings, or hide it. While recording is paused, the icon is dark. The settings panel holds the same switches, so a hidden icon can always be brought back.
+A left click on the icon saves by reloading the interface. A right click opens a menu to pause or resume, turn the reminder or the emote when saving on and off, set the screenshot settings, change the icon's animations, attachment, lock and size under Icon, or hide it. While recording is paused, the icon is dark. The settings panel holds the same switches and the chat messages switch, so a hidden icon can always be brought back. Your settings are shared by all your characters; pausing is each character's own.
 
 ## Screenshots
 
-With "Screenshot highlights" turned on, Widsith takes a screenshot when you reach a new level, defeat a boss for the first time, enter a zone or an instance for the first time, summon your first mount or die for the first time, and at every death on a Hardcore realm. For the picture it hides the friends list, the guild window and the Battle.net pop-ups, and chat as well unless "Show chat in the pictures" is on, and it draws a tiny mark in the corner. The pictures go in the game's own Screenshots folder, and your own screenshots aren't touched. Both settings are off unless you turn them on, under Screenshots in the icon's menu or under Options, AddOns, Widsith.
+With "Screenshot highlights" turned on, Widsith takes a screenshot when you reach a new level, defeat a boss for the first time, enter a zone or an instance for the first time, summon your first mount or die for the first time, and at every death on a Hardcore realm. For the picture it hides the friends list, the guild window and the Battle.net pop-ups, and chat as well unless "Show chat in the pictures" is on, and it draws a tiny mark in the corner. The pictures go in the game's own Screenshots folder, and your own screenshots aren't touched. Both settings are on unless you turn them off, under Screenshots in the icon's menu or under Options, AddOns, Widsith.
 
 ## The files
 

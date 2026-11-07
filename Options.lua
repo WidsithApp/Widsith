@@ -4,7 +4,7 @@
 -- hidden icon can always be brought back, and an About page beside it with the
 -- version, what the addon does and where recordings are replayed. Both are
 -- built with the game's own settings panel, so they look like the rest of it
--- and its search finds them. The settings themselves live in WidsithUI and are
+-- and its search finds them. The settings themselves are the account's and are
 -- read and changed through the icon's own functions, so a change here shows on
 -- the icon at once, and the reverse.
 
@@ -16,9 +16,9 @@ local CONTACT = "info@widsith.app"
 
 local category
 
--- What each setting is when nothing has been changed: the panel's Defaults
--- button puts these back.
-local DEFAULTS = { shown = true, remind = true, animate = true, chat = true, emote = false, onRing = true, locked = false, iconSize = 1, screenshots = false, shotsChat = false }
+-- What each setting is when nothing has been changed (Save.lua): the panel's
+-- Defaults button puts these back.
+local DEFAULTS = WJ.DEFAULTS
 
 -- The row and the setting behind it, so a row can be made to depend on another.
 local function checkbox(name, key, tooltip)
@@ -43,6 +43,7 @@ end
 local ABOUT = {
   { "What it does", WJ.NAME .. " keeps a record of your character's journey as you play: where you went, what you did and when." },
   { "Saving", "The game writes the recording only when you log out or reload. The icon shrinks the longer you go unsaved; click it to save, which reloads." },
+  { "Settings", "Your settings are shared by all your characters. Pausing is each character's own." },
   { "Replaying", "Bring the recording to the website, or let the " .. WJ.NAME .. " uploader send it as you play, and watch the journey on the map." },
   { "Chat command", "/widsith, and /widsith help for the rest." },
 }
@@ -121,7 +122,7 @@ local function createPanel()
 
   layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("The icon"))
   checkbox("Show the icon", "shown", "The icon by the minimap. Hidden, it can be brought back here or with /widsith icon.")
-  checkbox("Remind me to save", "remind", "The icon shrinks over half an hour of unsaved play, then glows, and a reminder appears when you are resting somewhere safe. Off, the icon stays as it is.")
+  checkbox("Remind me to save", "remind", "The icon shrinks over 45 minutes of unsaved play, then glows, and a reminder appears when you are resting somewhere safe. Off, the icon stays as it is.")
   checkbox("Animations", "animate", "The icon moves a little while recording, and more when recording starts or when pointed at. Off, nothing moves.")
   checkbox("Attach to minimap", "onRing", "Keep the icon on the minimap's ring, where dragging slides it round. Off, it can be dragged anywhere.")
   checkbox("Lock position", "locked", "The icon can't be dragged.")
@@ -134,8 +135,8 @@ local function createPanel()
   Settings.CreateDropdown(category, sizeSetting, sizeOptions, "Small is the size of the day and night dial beside it.")
 
   layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("The recording"))
-  local shots, shotsOn = checkbox("Screenshot highlights", "screenshots", "Takes a screenshot at the highlights of your journey, such as a new level, a boss's first defeat or your first time in a zone, with chat and the friends list hidden. The pictures go in your Screenshots folder with a tiny mark in the corner, and your own screenshots aren't touched. Off unless you turn it on.")
-  local chat = checkbox("Show chat in the pictures", "shotsChat", "Leaves your chat windows in the pictures, whispers included. The friends list, the guild window and Battle.net pop-ups are always hidden. Off unless you turn it on.")
+  local shots, shotsOn = checkbox("Screenshot highlights", "screenshots", "Takes a screenshot at the highlights of your journey, such as a new level, a boss's first defeat or your first time in a zone. The pictures go in your Screenshots folder with a tiny mark in the corner, and your own screenshots aren't touched.")
+  local chat = checkbox("Show chat in the pictures", "shotsChat", "Leaves your chat windows in the pictures, whispers included. The friends list, the guild window and Battle.net pop-ups are always hidden. Off, chat is hidden for the picture too.")
   -- Indented under the setting it depends on and greyed while that is off, as
   -- the game's own dependent settings are.
   chat:SetParentInitializer(shots, function() return shotsOn:GetValue() end)
@@ -144,7 +145,7 @@ local function createPanel()
     "Reloads the interface, which is the only way the game writes the file: a few seconds of loading screen, then you carry on. Not in combat.", true))
   layout:AddInitializer(CreateSettingsButtonInitializer("Pause or resume recording", "Pause / Resume",
     function() if WJ.togglePause then WJ.togglePause() end end,
-    "Paused, nothing is recorded until you resume, log in again or reload.", true))
+    "Paused, nothing is recorded on this character until you resume.", true))
 
   Settings.RegisterCanvasLayoutSubcategory(category, createAbout(), "About")
   -- Registering the category is the last step, as the game's own guide has it.

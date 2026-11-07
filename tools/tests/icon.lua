@@ -32,10 +32,10 @@ test("the tooltip says what the icon is doing and what a click does", function(g
   eq(lines[1], "Widsith", "the tooltip's title")
   expect(lines[2] and lines[2]:find("^Recording, under a minute unsaved%.$"), "the state line: " .. tostring(lines[2]))
   eq(lines[3], "Click to save. Right-click for options.", "the tooltip's last line")
-  game.advance(31 * 60)
+  game.advance(46 * 60)
   game.hover()
   lines = game.tooltip.lines
-  expect(lines[2] and lines[2]:find("unsaved%. Time to save%.$"), "after half an hour the tooltip should ask for a save: " .. tostring(lines[2]))
+  expect(lines[2] and lines[2]:find("unsaved%. Time to save%.$"), "after 45 minutes the tooltip should ask for a save: " .. tostring(lines[2]))
 end)
 
 test("a click saves: the interface reloads and the player is told", function(game)
@@ -87,14 +87,14 @@ test("the reminder appears once the flame has burnt down, only somewhere calm", 
   game.login()
   game.advance(8)
   expect(game.reminder() == nil, "a reminder before anything was unsaved")
-  game.advance(31 * 60)
+  game.advance(46 * 60)
   expect(game.reminder() == nil, "the reminder showed while the character wasn't resting")
   game.world.resting = true
   game.advance(6)
   local bubble = game.reminder()
   expect(bubble and bubble:IsShown(), "the reminder didn't show once resting")
   if bubble then
-    expect(bubble.regions[1].text:find("^Recording unsaved for 31 min"), "the reminder's title: " .. tostring(bubble.regions[1].text))
+    expect(bubble.regions[1].text:find("^Recording unsaved for 46 min"), "the reminder's title: " .. tostring(bubble.regions[1].text))
     -- Clicking the reminder saves.
     bubble.scripts.OnClick(bubble)
     expect(game.reloadAsked, "clicking the reminder didn't ask for a reload")
@@ -103,7 +103,7 @@ end)
 
 test("reminders can be turned off from the menu, and the reminder goes with them", function(game)
   game.login()
-  game.advance(31 * 60)
+  game.advance(46 * 60)
   game.world.resting = true
   game.advance(6)
   expect(game.reminder() and game.reminder():IsShown(), "no reminder to turn off")
@@ -123,20 +123,26 @@ test("the menu lists every setting with its default", function(game)
   local menu = game.openMenu()
   expect(menu.entries[1].kind == "title" and menu.entries[1].name == "Widsith", "the menu doesn't open with the addon's name")
   eq(game.menuEntry("Pause recording") ~= nil, true, "Pause recording while recording")
-  local defaults = { ["Remind me to save"] = true, ["Animations"] = true, ["Attach to minimap"] = true, ["Lock position"] = false,
-    ["Show chat messages"] = true, ["Emote when saving"] = false }
-  for name, want in pairs(defaults) do
-    local entry = game.menuEntry(name)
-    expect(entry ~= nil, "no menu entry " .. name)
-    if entry then eq(entry.isChecked(), want, name .. " by default") end
+  -- The top level, in order: what the player reaches for. The icon's own settings under Icon,
+  -- the sizes under a line in it; Show chat messages is the panel's alone.
+  local names = {}
+  for _, entry in ipairs(menu.entries) do names[#names + 1] = entry.kind .. ":" .. entry.name end
+  same(names, { "title:Widsith", "button:Pause recording", "checkbox:Remind me to save", "checkbox:Emote when saving",
+    "button:Screenshots", "button:Icon", "button:Hide icon" }, "the menu's top level")
+  local iconNames = {}
+  for _, entry in ipairs(game.menuEntry("Icon").entries) do iconNames[#iconNames + 1] = entry.kind .. ":" .. entry.name end
+  same(iconNames, { "checkbox:Animations", "checkbox:Attach to minimap", "checkbox:Lock position", "divider:",
+    "radio:Small", "radio:Medium", "radio:Large" }, "the Icon submenu")
+  local defaults = { { "Remind me to save", true }, { "Emote when saving", false }, { "Screenshots", "Screenshot highlights", true },
+    { "Screenshots", "Show chat in the pictures", true }, { "Icon", "Animations", true }, { "Icon", "Attach to minimap", true },
+    { "Icon", "Lock position", false }, { "Icon", "Small", true }, { "Icon", "Large", false } }
+  for _, d in ipairs(defaults) do
+    local want = table.remove(d)
+    local entry = game.menuEntry(table.unpack(d))
+    expect(entry ~= nil, "no menu entry " .. table.concat(d, " > "))
+    if entry then eq(entry.isChecked(), want, table.concat(d, " > ") .. " by default") end
   end
-  local shots = game.menuEntry("Screenshots", "Screenshot highlights")
-  expect(shots and shots.isChecked() == false, "Screenshot highlights isn't off by default under Screenshots")
-  local chat = game.menuEntry("Screenshots", "Show chat in the pictures")
-  expect(chat and chat.isChecked() == false, "Show chat in the pictures isn't off by default under Screenshots")
-  local small = game.menuEntry("Icon size", "Small")
-  expect(small and small.isChecked(), "Small isn't the size by default")
-  expect(game.menuEntry("Hide icon") ~= nil, "no Hide icon entry")
+  expect(game.menuEntry("Show chat messages") == nil, "Show chat messages is still in the menu")
 end)
 
 test("pausing from the menu closes the session and the menu then offers Resume", function(game)
@@ -145,7 +151,7 @@ test("pausing from the menu closes the session and the menu then offers Resume",
   game.openMenu()
   game.press(game.menuEntry("Pause recording"))
   expect(not game.addon.isRecording(), "still recording after Pause")
-  expect(game.said("recording paused."), "the pause wasn't said")
+  expect(game.said("recording paused on this character until you resume it"), "the pause wasn't said")
   eq(game.last("END").fields[2], "pause", "the END line's reason")
   game.openMenu()
   expect(game.menuEntry("Pause recording") == nil and game.menuEntry("Resume recording") ~= nil, "the menu doesn't offer Resume while paused")
@@ -185,15 +191,16 @@ test("the settings panel has every setting, and Defaults puts them back", functi
     "button:Save the recording", "button:Pause or resume recording", "canvas:About" }, "the panel's rows")
   local chat = game.panelRow("Show chat in the pictures")
   expect(chat and chat.parent == game.panelRow("Screenshot highlights"), "the chat row doesn't depend on the highlights row")
-  expect(chat and chat.enabledWhen() == false, "the chat row isn't greyed while highlights are off")
-  game.panelRow("Screenshot highlights").setting:SetValue(true)
-  expect(chat.enabledWhen() == true, "the chat row isn't enabled once highlights are on")
+  expect(chat and chat.enabledWhen() == true, "the chat row isn't enabled while highlights are on, as they are by default")
+  game.panelRow("Screenshot highlights").setting:SetValue(false)
+  expect(chat.enabledWhen() == false, "the chat row isn't greyed once highlights are off")
   -- Every setting's default is what the menu's default is, and changing one shows on the icon's side.
   game.panelRow("Emote when saving").setting:SetValue(true)
   expect(game.addon.getIconSetting("emote"), "the panel's emote row didn't set the setting")
   game.panelDefaults()
   expect(not game.addon.getIconSetting("emote"), "Defaults left Emote when saving on")
-  expect(not game.addon.getIconSetting("screenshots"), "Defaults left Screenshot highlights on")
+  expect(game.addon.getIconSetting("screenshots"), "Defaults left Screenshot highlights off")
+  expect(game.addon.getIconSetting("shotsChat"), "Defaults left Show chat in the pictures off")
   expect(game.addon.getIconSetting("remind"), "Defaults turned reminders off")
   eq(game.addon.getIconSetting("iconSize"), 1, "Defaults' icon size")
   -- The panel's buttons do what the icon does.
@@ -227,9 +234,9 @@ test("settings survive a reload, and a saved position is kept", function(game)
   game.login()
   game.advance(8)
   game.openMenu()
-  game.press(game.menuEntry("Animations"))
-  game.press(game.menuEntry("Lock position"))
-  game.press(game.menuEntry("Icon size", "Large"))
+  game.press(game.menuEntry("Icon", "Animations"))
+  game.press(game.menuEntry("Icon", "Lock position"))
+  game.press(game.menuEntry("Icon", "Large"))
   game.clickSave()
   game.advance(1)
   expect(not game.addon.getIconSetting("animate"), "Animations came back on after the reload")
@@ -271,7 +278,7 @@ test("a reload the game didn't read the file back from is said once, and saving 
   game.clickSave()
   expect(not game.reloadAsked, "a click reloaded although the file wasn't loaded")
   expect(game.said("not reloading: the game didn't load the earlier recording"), "the refusal wasn't said")
-  game.advance(31 * 60)
+  game.advance(46 * 60)
   game.world.resting = true
   game.advance(6)
   expect(game.reminder() == nil or not game.reminder():IsShown(), "the reminder asked for a reload that would replace the file")

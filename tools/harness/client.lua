@@ -22,7 +22,7 @@
 -- and press what they could press, never how it looks.
 
 local ADDON = "Widsith"
-local ADDON_FILES = { "Core.lua", "Position.lua", "Events.lua", "Extras.lua", "Moments.lua", "Screenshots.lua", "Save.lua", "Options.lua" }
+local ADDON_FILES = { "Core.lua", "Position.lua", "Events.lua", "Extras.lua", "Moments.lua", "Screenshots.lua", "Save.lua", "Options.lua", "Welcome.lua" }
 
 -- The two clients, as they were seen. Each key is one fact the stubs answer by.
 local PROFILES = {
@@ -839,6 +839,7 @@ local function newGame(profileName, dir, version)
         node.entries[#node.entries + 1] = entry
         return entry
       end
+      node.CreateDivider = function() node.entries[#node.entries + 1] = menuNode("divider", "") end
       return node
     end
     G.MenuUtil = { CreateContextMenu = function(owner, generator)
@@ -951,10 +952,13 @@ local function newGame(profileName, dir, version)
   end
 
   -- The game's own order at a login: the addon's files, ADDON_LOADED, PLAYER_LOGIN, then the
-  -- world entered.
+  -- world entered. The saved tables are what game.saved holds, if a test set them first, as a
+  -- file an earlier version wrote; otherwise none, a first run.
   function game.login()
     buildEnvironment()
     frames, timers = {}, {}
+    local tables = game.saved or {}
+    G.WidsithDB, G.WidsithUI, G.WidsithAccount = tables.WidsithDB, tables.WidsithUI, tables.WidsithAccount
     loadAddon()
     fire("ADDON_LOADED", ADDON)
     fire("PLAYER_LOGIN")
@@ -975,19 +979,49 @@ local function newGame(profileName, dir, version)
     return out
   end
 
+  -- What the game saves at a logout or reload: the three tables, copied as the file would hold
+  -- them.
+  local function savedTables()
+    return {
+      WidsithDB = saved("WidsithDB", G.WidsithDB, "WidsithDB"),
+      WidsithUI = saved("WidsithUI", G.WidsithUI, "WidsithUI"),
+      WidsithAccount = saved("WidsithAccount", G.WidsithAccount, "WidsithAccount"),
+    }
+  end
+
+  local function loadOn(tables, isLogin, isReload)
+    buildEnvironment()
+    frames, timers = {}, {}
+    G.WidsithDB, G.WidsithUI, G.WidsithAccount = tables.WidsithDB, tables.WidsithUI, tables.WidsithAccount
+    loadAddon()
+    fire("ADDON_LOADED", ADDON)
+    fire("PLAYER_LOGIN")
+    fire("PLAYER_ENTERING_WORLD", isLogin, isReload)
+  end
+
   -- A reload: PLAYER_LOGOUT, the saved variables written out, the interface loaded afresh on
   -- them, and the world entered again as a reload. The clock runs on, as GetTime does.
   function game.reload()
     game.reloadAsked = nil
     fire("PLAYER_LOGOUT")
-    local db, ui = saved("WidsithDB", G.WidsithDB, "WidsithDB"), saved("WidsithUI", G.WidsithUI, "WidsithUI")
-    buildEnvironment()
-    frames, timers = {}, {}
-    G.WidsithDB, G.WidsithUI = db, ui
-    loadAddon()
-    fire("ADDON_LOADED", ADDON)
-    fire("PLAYER_LOGIN")
-    fire("PLAYER_ENTERING_WORLD", false, true)
+    loadOn(savedTables(), false, true)
+  end
+
+  -- A logout and a login on the same character: the file written and read back, the world
+  -- entered as a login.
+  function game.loginAgain()
+    fire("PLAYER_LOGOUT")
+    loadOn(savedTables(), true, false)
+  end
+
+  -- A logout and a login on another character of the same account: the account's table kept,
+  -- the character's two fresh.
+  function game.loginAs(name, surname, guid)
+    fire("PLAYER_LOGOUT")
+    local tables = savedTables()
+    tables.WidsithDB, tables.WidsithUI = nil, nil
+    game.character = { name = name, surname = surname, guid = guid or ("Player-4747-" .. name) }
+    loadOn(tables, true, false)
   end
 
   -- A reload after which the game didn't read the file back, as early WoW Forever builds did.
@@ -1005,7 +1039,7 @@ local function newGame(profileName, dir, version)
 
   function game.logout()
     fire("PLAYER_LOGOUT")
-    game.saved = { WidsithDB = saved("WidsithDB", G.WidsithDB, "WidsithDB"), WidsithUI = saved("WidsithUI", G.WidsithUI, "WidsithUI") }
+    game.saved = savedTables()
     return game.saved
   end
 
