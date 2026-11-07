@@ -91,6 +91,7 @@ test("the welcome is said once, at the first login on the account", function(gam
   same({ lines[2], lines[3], lines[4], lines[5], lines[6] }, { "  - Your gameplay is now being recorded", "  - View it or share it at widsith.app",
     "  - Download the uploader there to keep it in sync automatically", "", "More details and support in the addon's options, and at widsith.app." },
     "the welcome's list, a blank line, and where to find more")
+  expect(welcome and welcome:sub(-1) == "\n", "the welcome doesn't close with a blank line")
   local messages = 0
   for _, line in ipairs(game.chat) do if line:find("Thank you for installing", 1, true) or line:find("Your gameplay is now", 1, true) then messages = messages + 1 end end
   eq(messages, 1, "the welcome's chat messages: one, its lines under one heading")

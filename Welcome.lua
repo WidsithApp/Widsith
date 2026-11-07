@@ -59,15 +59,16 @@ function WJ.tellNews()
   local account = WidsithAccount
   if not account or account.seenVersion == WJ.VERSION then return false end
   local version = WJ.VERSION
+  -- A blank line closes either, so it stands apart from what other addons print after it.
   if account.seenVersion == nil and not account.usedBefore then
-    WJ.say(WJ.EMBLEM .. " " .. table.concat(WELCOME, "\n"), true)
+    WJ.say(WJ.EMBLEM .. " " .. table.concat(WELCOME, "\n") .. "\n", true)
   else
     local recording = WJ.isRecording() and " and recording" or ""
     local lines = { version .. " is installed" .. recording .. "." .. (NOTES[version] and " What's new:" or "") }
     for _, note in ipairs(NOTES[version] or {}) do
       if note.chat then lines[#lines + 1] = "  - " .. note[1] end
     end
-    WJ.announce(table.concat(lines, "\n"))
+    WJ.announce(table.concat(lines, "\n") .. "\n")
   end
   account.seenVersion = version
   return true
