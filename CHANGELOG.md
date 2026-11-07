@@ -2,6 +2,11 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
+## 0.7.1 · 2026-11-08
+
+- The two played-time lines the game prints when Widsith asks for your played time, at a login or a reload, are no longer hidden. Hiding them meant swapping out a piece of the game's own chat code, which other addons can trip over; the lines are the game's, and now show as they do after /played.
+- Closing the save reminder with its X is guarded like every other click, so a fault there is answered in chat rather than as an error window.
+
 ## 0.7.0 · 2026-11-07
 
 - Your settings are shared by all your characters. The first character you log in on after installing this version lends its settings to the account; what other characters had set is not kept.

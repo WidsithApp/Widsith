@@ -59,6 +59,17 @@ end)
 
 -- A command whose body throws, typed with spaces before it: no Lua error reaches the player, the
 -- fault is an ERR line like any other, and the command is answered in chat.
+-- The played-time request is made and the game's own display of the reply is left as the game
+-- defined it: nothing of Blizzard's chat code is replaced.
+test("the played-time request leaves the game's chat code as it was", function(game)
+  local before
+  game.onBuild = function(G) before = G.ChatFrameUtil.DisplayTimePlayed end
+  game.login()
+  game.advance(8)
+  expect(type(before) == "function", "the stand-in has no played-time display to compare")
+  expect(game.G.ChatFrameUtil.DisplayTimePlayed == before, "the game's played-time display was replaced")
+end)
+
 test("a command whose body throws is noted as ERR command and answered in chat", { errAllowed = true, problemAllowed = true }, function(game)
   game.login()
   game.advance(8)

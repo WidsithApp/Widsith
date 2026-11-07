@@ -106,6 +106,30 @@ test("the reminder appears once the flame has burnt down, only somewhere calm", 
   end
 end)
 
+-- The reminder's close button is the player's own action, so a fault in it is answered in chat
+-- and noted, never raised to the game as an error.
+test("a fault closing the reminder is answered in plain words, and the next close works", { errAllowed = true, problemAllowed = true }, function(game)
+  game.login()
+  game.advance(46 * 60)
+  game.world.resting = true
+  game.advance(6)
+  local bubble = game.reminder()
+  expect(bubble and bubble:IsShown(), "no reminder to close")
+  local close
+  for _, child in ipairs(bubble.children) do
+    if child.kind == "Button" then close = child end
+  end
+  expect(close and close.scripts.OnClick, "the reminder has no close button with a click")
+  bubble.Hide = function() error("boom") end
+  close.scripts.OnClick(close)
+  expect(game.said("that didn't work"), "the fault wasn't answered in chat")
+  local err = game.last("ERR")
+  expect(err and err.fields[1] == "reminder", "the fault wasn't noted as ERR reminder: " .. tostring(err and err.fields[1]))
+  bubble.Hide = nil
+  close.scripts.OnClick(close)
+  expect(not bubble:IsShown(), "the reminder didn't close once the fault was gone")
+end)
+
 test("reminders can be turned off from the menu, and the reminder goes with them", function(game)
   game.login()
   game.advance(46 * 60)

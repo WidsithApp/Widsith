@@ -138,23 +138,20 @@ test("a new version is announced once per account as one message listing what ch
   for line in ((said[2] or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
   local B = "  \226\128\162 "
   same(lines, { "Widsith " .. game.version .. " is installed.", "", "What's new:", "",
-    B .. "Screenshot highlights, and the include chat in screenshots options are now enabled by default", "",
-    B .. "Changes you make to the general Widsith configuration are now shared across all your characters", "",
-    B .. "Pause and Resume have been changed to Stop and Start to better reflect their behaviour", "",
-    B .. "Characters that have had their recording stopped, now will not start again until manually started." },
+    B .. "The two played-time lines the game prints when Widsith asks for your played time, at a login or a reload, are no longer hidden" },
     "the news: the version, What's new, the points a blank line apart behind bullets")
   -- Chat gets what a player may act on or what changes the way things work; the About page
-  -- lists everything, the reminder's new length and the menu's shape included.
-  expect(not said[2]:find("45 minutes", 1, true) and not said[2]:find("under Icon", 1, true), "a change a player can only see is in the message")
-  eq(#game.addon.whatsNew(), 6, "the About page's notes")
+  -- lists everything, the guarded close button included.
+  expect(not said[2]:find("save reminder", 1, true), "a change a player can only see is in the message")
+  eq(#game.addon.whatsNew(), 2, "the About page's notes")
   -- The About page lists the notes under a heading with the version.
   local about = game.panelRow("About")
   local texts = {}
   for _, r in ipairs(about.frame.regions) do texts[#texts + 1] = r.text end
   local joined = table.concat(texts, "\n")
   expect(joined:find("What's new in " .. game.version, 1, true), "the About page has no What's new heading")
-  expect(joined:find("Screenshot highlights, and the include chat in screenshots options are now enabled by default", 1, true), "the About page doesn't list the notes")
-  expect(joined:find("The save reminder comes after 45 minutes", 1, true), "the About page leaves out a note chat doesn't carry")
+  expect(joined:find("The two played-time lines the game prints", 1, true), "the About page doesn't list the notes")
+  expect(joined:find("A fault closing the save reminder", 1, true), "the About page leaves out a note chat doesn't carry")
   game.clearChat()
   game.loginAs("Maela", game.profile.surname and "Dunwood" or nil)
   game.advance(4)

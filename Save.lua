@@ -106,9 +106,9 @@ end
 -- The reminder
 ---------------------------------------------------------------------------
 
-local function hideBubble()
+local hideBubble = WJ.attempt("reminder", function()
   if bubble then bubble:Hide() end
-end
+end)
 
 local function placeBubble()
   bubble:ClearAllPoints()

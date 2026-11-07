@@ -345,28 +345,11 @@ local function stayPaused()
 end
 
 ---------------------------------------------------------------------------
--- Played time. RequestTimePlayed() echoes to chat; the echo is swallowed.
+-- Played time. The game prints its two lines when the reply comes, as for /played.
 ---------------------------------------------------------------------------
 
--- Each chat window showing system messages calls this once per reply, so it is muted for a
--- time, not a count. ChatFrameUtil.DisplayTimePlayed (ChatFrameOverrides.lua), or the older global.
-local suppressUntil = 0
-local function wrapTimePlayed(holder, key)
-  if type(holder) ~= "table" then return end
-  local original = holder[key]
-  if type(original) ~= "function" then return end
-  holder[key] = function(...)
-    if GetTime() < suppressUntil then return end
-    return original(...)
-  end
-end
-wrapTimePlayed(ChatFrameUtil, "DisplayTimePlayed")
-wrapTimePlayed(_G, "ChatFrame_DisplayTimePlayed")
-
 function WJ.requestTimePlayed()
-  if not RequestTimePlayed then return end
-  suppressUntil = GetTime() + 5
-  RequestTimePlayed()
+  if RequestTimePlayed then RequestTimePlayed() end
 end
 
 ---------------------------------------------------------------------------

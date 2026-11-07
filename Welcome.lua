@@ -70,6 +70,10 @@ end
 -- What changed, by version. The About page lists every note; chat only those marked chat,
 -- for what a player may act on or what changes how things work.
 local NOTES = {
+  ["0.7.1"] = {
+    { "The two played-time lines the game prints when Widsith asks for your played time, at a login or a reload, are no longer hidden", chat = true },
+    { "A fault closing the save reminder is answered in chat, like every other click, rather than raised as an error" },
+  },
   ["0.7.0"] = {
     { "Screenshot highlights, and the include chat in screenshots options are now enabled by default", chat = true },
     { "Changes you make to the general Widsith configuration are now shared across all your characters", chat = true },
