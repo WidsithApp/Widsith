@@ -1,6 +1,6 @@
 -- The extras (Extras.lua, and the counters in Moments.lua): recipes known, gear sets and the swaps
--- between them, talents and spec, currencies, reputations, the game's own counters, and the
--- character table the file keeps beside the sessions.
+-- between them, talents and spec, currencies, reputations, the game's own counters, the guild,
+-- the rules a character plays under, and the character table the file keeps beside the sessions.
 
 -- A gear set's items as GEARSET writes them: slots 1 to 19 in order, an empty element where the
 -- set has nothing.
@@ -316,9 +316,116 @@ test("the character table holds the first name and the surname apart, with the r
     "the character table doesn't hold the first name and the surname apart: " .. tostring(c.name) .. " / " .. tostring(c.surname))
   if game.profile.label == "forever" then eq(c.surname, "Thornby", "the surname on Forever") else eq(c.surname, nil, "the surname on Retail") end
   eq(c.guid, game.character.guid, "the character's GUID")
+  -- The realm as the game gives it: on WoW Forever an empty string.
   eq(c.realm, game.profile.realm, "the realm")
   eq(c.realmN, game.profile.realmN, "the normalised realm")
   eq(c.region, game.profile.region, "the region")
   eq(c.classID, 1, "the class ID")
   eq(c.raceID, 1, "the race ID")
+end)
+
+-- WoW Forever names a character's ruleset in its game rules, not in the realm's name: the PvP and
+-- Roleplay rules as booleans and the game mode record, beside the realm.
+test("the character table holds the ruleset's two rules and the game mode record on WoW Forever", { client = "forever" }, function(game)
+  game.ruleset("roleplaypvp")
+  game.login()
+  game.advance(8)
+  local c = game.G.WidsithDB.character
+  eq(c.rulePvP, true, "the PvP rule")
+  eq(c.ruleRP, true, "the Roleplay rule")
+  eq(c.gameMode, 18, "the game mode record")
+  eq(c.realm, "", "the realm, as the game gives it")
+end)
+
+test("the character table leaves out the ruleset where the client doesn't name its rules", { client = "retail" }, function(game)
+  game.login()
+  game.advance(8)
+  local c = game.G.WidsithDB.character
+  eq(c.rulePvP, nil, "the PvP rule")
+  eq(c.ruleRP, nil, "the Roleplay rule")
+  eq(c.gameMode, nil, "the game mode record")
+  eq(c.realm, "Whitemane", "the realm")
+end)
+
+---------------------------------------------------------------------------
+-- RULES
+---------------------------------------------------------------------------
+
+-- Each ruleset as it was seen on WoW Forever: Normal with both rules off and record 15, PvP with
+-- the PvP rule on and 14, Roleplay with the Roleplay rule on and 16, Roleplay PvP with both on and
+-- 18. They follow hardcore, self-found and the interface preset.
+for _, case in ipairs({ { "normal", "0 0 1 0 0 15" }, { "pvp", "0 0 1 1 0 14" }, { "roleplay", "0 0 1 0 1 16" },
+  { "roleplaypvp", "0 0 1 1 1 18" } }) do
+  test("RULES names the " .. case[1] .. " ruleset after hardcore, self-found and the preset", { client = "forever" }, function(game)
+    game.ruleset(case[1])
+    game.login()
+    game.advance(8)
+    same(game.fieldsOf("RULES"), { case[2] }, "RULES lines")
+  end)
+end
+
+test("RULES leaves the ruleset's fields empty where the client doesn't name its rules", { client = "retail" }, function(game)
+  game.login()
+  game.advance(8)
+  -- Retail lacks the hardcore and preset calls too; self-found answers.
+  local rules = game.lines("RULES")
+  eq(#rules, 1, "RULES lines")
+  if rules[1] then same(rules[1].fields, { "", "0", "", "", "", "" }, "the RULES fields") end
+end)
+
+test("RULES and the character table carry on without the game rules enum, or with a rule hidden", { client = "forever" }, function(game)
+  game.onBuild = function(G)
+    G.Enum.GameRule = nil
+    G.C_GameRules.GetCurrentGameModeRecordID = function() return game.SECRET end
+  end
+  game.login()
+  game.advance(8)
+  same(game.fieldsOf("RULES"), { "0 0 1   " }, "RULES lines")
+  local c = game.G.WidsithDB.character
+  expect(c.rulePvP == nil and c.ruleRP == nil and c.gameMode == nil, "the character table kept a rule it couldn't read")
+  game.reload()
+  game.advance(8)
+  expect(game.addon.isRecording(), "the reload after a hidden game mode didn't record")
+end)
+
+---------------------------------------------------------------------------
+-- The guild
+---------------------------------------------------------------------------
+
+-- At a login the client may answer with no name, rank 0, before it knows the guild: that is no
+-- guild yet, and nothing is written until the real answer, which is written once.
+test("a guild the client hasn't loaded yet writes nothing, and the guild is written once it is known", function(game)
+  game.world.inGuild = false
+  game.world.guild = { name = "", rankIndex = 0 }
+  game.login()
+  game.advance(8)
+  eq(#game.lines("GUILD"), 0, "GUILD lines while the client answered with no name")
+  game.world.inGuild = true
+  game.world.guild = { name = "Its our home", rankName = "Rug", rankIndex = 3 }
+  game.fire("PLAYER_GUILD_UPDATE", "player")
+  game.fire("PLAYER_GUILD_UPDATE", "player")
+  same(game.fieldsOf("GUILD"), { "Its our home Rug  3" }, "GUILD lines")
+end)
+
+-- A character who leaves gets the line with every field empty, whatever rank the game still gives.
+test("leaving a guild writes the line with every field empty, once", function(game)
+  game.world.inGuild = true
+  game.world.guild = { name = "Its our home", rankName = "Rug", rankIndex = 3 }
+  game.login()
+  game.advance(8)
+  game.world.inGuild = false
+  game.world.guild = { name = "", rankIndex = 0 }
+  game.fire("PLAYER_GUILD_UPDATE", "player")
+  game.world.guild = nil
+  game.fire("PLAYER_GUILD_UPDATE", "player")
+  local lines = game.lines("GUILD")
+  eq(#lines, 2, "GUILD lines")
+  if lines[2] then same(lines[2].fields, { "", "", "", "" }, "the leaving line's fields") end
+end)
+
+test("a character in no guild writes no GUILD line", function(game)
+  game.login()
+  game.advance(8)
+  game.fire("PLAYER_GUILD_UPDATE", "player")
+  eq(#game.lines("GUILD"), 0, "GUILD lines")
 end)

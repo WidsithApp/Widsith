@@ -95,6 +95,101 @@ test("a quest already ready as a session begins is written as the opening state 
   eq(other, 0, "QDONE lines for quest 200 not marked as the opening state")
 end)
 
+-- The quest lines of a session in order, as KIND fields, with each SNAP shown by its quest list.
+local function questTrail(game)
+  local out = {}
+  for _, l in ipairs(game.lines()) do
+    if l.kind == "SNAP" then out[#out + 1] = "SNAP " .. l.fields[8]
+    elseif l.kind == "QLABEL" or l.kind == "QDONE" or l.kind == "QPROG" then out[#out + 1] = l.kind .. " " .. table.concat(l.fields, " ") end
+  end
+  return out
+end
+
+-- A quest with two objectives the log holds when it arrives, one already advanced.
+local function boarsInTheLog()
+  return { questID = 100, title = "Boars and a Key", ready = false, level = 4, objectives = {
+    { numFulfilled = 3, numRequired = 8, type = "monster", text = "Boar slain" },
+    { numFulfilled = 0, numRequired = 1, type = "item", text = "Rusty Key" } } }
+end
+
+-- The log there at the login, as it was on every login but one after the game's cache was emptied:
+-- the opening snapshot lists it, then each quest's name and the quests already ready.
+test("a quest log there at the login is written with the opening snapshot, and nothing is written again for it", function(game)
+  game.login()
+  game.advance(8)
+  game.fire("QUEST_LOG_UPDATE")
+  game.fire("QUEST_LOG_UPDATE")
+  game.advance(1)
+  same(questTrail(game), { "SNAP 200", "QLABEL 200 An Old Errand", "QDONE 200 1" }, "the quest lines")
+end)
+
+-- After the game's cache was emptied, the log read empty at the login and at the first
+-- QUEST_LOG_UPDATE, and was whole at the second, every quest at once with its objectives.
+test("a quest log that arrives after the opening is written when it arrives, with a snapshot, its names and the quests ready", function(game)
+  local whole = game.world.questLog
+  whole[#whole + 1] = boarsInTheLog()
+  game.world.questLog = {}
+  game.login()
+  game.advance(8)
+  game.fire("QUEST_LOG_UPDATE")
+  game.advance(3)
+  game.world.questLog = whole
+  local arrivedMs = game.addon.nowMs()
+  game.fire("QUEST_LOG_UPDATE")
+  game.fire("QUEST_LOG_UPDATE")
+  game.advance(1)
+  -- Progress after the arrival is written as progress, one objective, never the lists again.
+  whole[2].objectives[1].numFulfilled = 4
+  game.fire("UNIT_QUEST_LOG_CHANGED", "player")
+  game.advance(1)
+  same(questTrail(game), { "SNAP ", "SNAP 200,100", "QLABEL 200 An Old Errand", "QLABEL 100 Boars and a Key", "QDONE 200 1",
+    "QPROG 100 1 4 8 monster Boar slain" }, "the quest lines")
+  local snaps = game.lines("SNAP")
+  eq(snaps[2] and snaps[2].t, arrivedMs, "the arrival's SNAP time")
+  eq(#game.lines("COUNT"), 2, "COUNT lines, one with each snapshot")
+end)
+
+-- The log may first be read changed by the quest diff rather than at a QUEST_LOG_UPDATE.
+test("a quest log that arrives as the quest log changes is written as an arrival, not as progress", function(game)
+  local whole = game.world.questLog
+  whole[#whole + 1] = boarsInTheLog()
+  game.world.questLog = {}
+  game.login()
+  game.advance(8)
+  game.world.questLog = whole
+  game.fire("UNIT_QUEST_LOG_CHANGED", "player")
+  game.advance(1)
+  same(questTrail(game), { "SNAP ", "SNAP 200,100", "QLABEL 200 An Old Errand", "QLABEL 100 Boars and a Key", "QDONE 200 1" },
+    "the quest lines")
+end)
+
+-- A character with no quests: the log reads empty throughout and QUEST_LOG_UPDATE still comes.
+-- Nothing is written past the opening; a quest accepted later is written as an accept.
+test("a character with no quests writes the empty log once, and a quest accepted later as an accept", function(game)
+  game.world.questLog = {}
+  game.login()
+  game.advance(8)
+  game.fire("QUEST_LOG_UPDATE")
+  game.advance(3)
+  game.fire("QUEST_LOG_UPDATE")
+  acceptBoarsAndAKey(game)
+  game.fire("QUEST_LOG_UPDATE")
+  game.advance(1)
+  same(questTrail(game), { "SNAP ", "QPROG 100 1 0 8 monster Boar slain", "QPROG 100 2 0 1 item Rusty Key" }, "the quest lines")
+end)
+
+-- A reload finds the log whole as the file loads: nothing is waited for.
+test("a reload writes the quest log with the opening snapshot, as a login does", function(game)
+  game.login()
+  game.advance(8)
+  game.reload()
+  game.advance(8)
+  game.fire("QUEST_LOG_UPDATE")
+  game.advance(1)
+  eq(#game.lines("SNAP", 2), 1, "SNAP lines in the reload's session")
+  same(game.fieldsOf("QLABEL", 2), { "200 An Old Errand" }, "QLABEL lines in the reload's session")
+end)
+
 ---------------------------------------------------------------------------
 -- Loot
 ---------------------------------------------------------------------------

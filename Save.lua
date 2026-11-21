@@ -7,8 +7,8 @@
 -- then the ring glows and, once the character is resting, a reminder appears.
 -- A left click saves, which is a UI reload; stopped, the flame is out and grey.
 --
--- Settings are the account's (WidsithAccount); a save under way and the last
--- emote are the character's (WidsithUI). Nothing here is written to the
+-- Settings are the account's (WidsithAccount); the last emote is the
+-- character's (WidsithUI). Nothing here is written to the
 -- recording. The ring and highlight are the game's own art; the flame, disc and
 -- glow are the addon's (media/).
 
@@ -64,9 +64,9 @@ local function calm()
   return true
 end
 
--- Saving is a reload; the flag survives it, so the interface that comes back says
--- so. Refused while the game failed to load the file back (WJ.savesNotLoaded),
--- when a reload would replace the recording on disk.
+-- Saving is a reload, and the interface that comes back says the recording is
+-- saved, as after any reload. Refused while the game failed to load the file back
+-- (WJ.savesNotLoaded), when a reload would replace the recording on disk.
 local save = WJ.attempt("save", function()
   if InCombatLockdown() then
     print(PREFIX .. "can't reload the interface in combat; try again when the fight is over.")
@@ -76,7 +76,6 @@ local save = WJ.attempt("save", function()
     print(PREFIX .. "not reloading: the game didn't load the earlier recording at the last reload, and a reload now would replace it. Copy the file out of SavedVariables first.")
     return
   end
-  WidsithUI.saving = true
   ReloadUI()
 end)
 
@@ -106,9 +105,9 @@ end
 -- The reminder
 ---------------------------------------------------------------------------
 
-local function hideBubble()
+local hideBubble = WJ.attempt("reminder", function()
   if bubble then bubble:Hide() end
-end
+end)
 
 local function placeBubble()
   bubble:ClearAllPoints()
@@ -356,20 +355,21 @@ local function updateIcon()
   wasRecording = recording
 end
 
--- Where the day/night indicator exists, the icon takes its parent, scale and
--- layer, so it follows the minimap through Edit Mode, times the chosen size.
+-- Where the day/night indicator exists, the icon takes its size on screen, times the chosen
+-- size, so it follows the minimap through Edit Mode. It stays UIParent's child: inside the
+-- minimap cluster it would go with the cluster when an interface addon fades or hides it.
+-- It keeps a strata of its own, above the cluster's (createIcon), and never the indicator's
+-- frame level: the cluster is raised within its strata whenever it is clicked, and a level
+-- copied from it would then lie under the map.
 local function diel()
   return MinimapCluster and MinimapCluster.DielFrame
 end
 
 local function matchDiel()
   local d = diel()
-  if d then
-    icon:SetParent(d:GetParent())
-    icon:SetFrameStrata(d:GetFrameStrata())
-    icon:SetFrameLevel(d:GetFrameLevel())
-  end
-  icon:SetScale((d and d:GetScale() or 1) * size())
+  local scale = 1
+  if d then scale = d:GetEffectiveScale() / UIParent:GetEffectiveScale() end
+  icon:SetScale(scale * size())
   layoutFlame()
 end
 
@@ -652,6 +652,7 @@ end
 
 local function createIcon()
   icon = CreateFrame("Button", "WidsithRecordingIcon", UIParent)
+  -- One strata above the minimap cluster's (LOW), so the map is never drawn over the icon.
   icon:SetFrameStrata("MEDIUM")
   icon:SetClampedToScreen(true)
   icon:SetMovable(true)
@@ -812,11 +813,12 @@ end)
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
-frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:SetScript("OnEvent", WJ.guard("icon", function(self, event, ...)
   if event == "ADDON_LOADED" then
     if (...) ~= ADDON_NAME then return end
     settings = WJ.loadSettings()
+    -- A key the file may still hold; nothing reads it.
+    WidsithUI.saving = nil
     -- A place saved for an older icon style lands elsewhere: start afresh, once.
     if settings.iconStyle ~= 4 then
       settings.point = nil
@@ -830,13 +832,5 @@ frame:SetScript("OnEvent", WJ.guard("icon", function(self, event, ...)
     WJ.onRecordingStarted = updateIcon
     if type(ReloadUI) == "function" then hooksecurefunc("ReloadUI", WJ.guard("saveEmote", emoteOnSave)) end
     self:UnregisterEvent("PLAYER_LOGIN")
-  elseif event == "PLAYER_ENTERING_WORLD" then
-    -- A reload asked for as a save: say so. The flame is lit by the recorder's
-    -- call, since this frame may hear the event first.
-    local _, isReload = ...
-    if isReload and WidsithUI.saving then
-      WidsithUI.saving = nil
-      say("saved.")
-    end
   end
 end))

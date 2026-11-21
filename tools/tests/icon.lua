@@ -29,6 +29,37 @@ test("a login lights the icon and says the version is recording, under the emble
   end
 end)
 
+-- With the day/night dial, the icon takes the dial's size on screen, but never its parent: a
+-- child of the minimap cluster goes with the cluster when an interface addon fades it.
+test("the icon stays UIParent's child at the dial's size", { client = "forever" }, function(game)
+  game.onBuild = function(G) G.MinimapCluster.scale = 0.8 end
+  game.login()
+  game.advance(8)
+  local icon, dial = game.icon(), game.G.MinimapCluster.DielFrame
+  expect(dial ~= nil, "the stand-in has no dial on this client")
+  expect(icon:GetParent() == game.G.UIParent, "the icon's parent isn't UIParent: " .. tostring(icon:GetParent() and icon:GetParent():GetName()))
+  eq(icon:GetEffectiveScale(), dial:GetEffectiveScale(), "the icon's size on screen against the dial's")
+end)
+
+-- The minimap cluster is raised within its strata whenever it is clicked, which lifts the map's
+-- frame level past any level copied from it earlier. The icon stands a strata above instead, so
+-- no raise of the cluster can put the map over it.
+test("the icon stands a strata above the minimap, whatever the minimap's level becomes", function(game)
+  game.login()
+  game.advance(8)
+  local G, icon = game.G, game.icon()
+  eq(G.MinimapCluster:GetFrameStrata(), "LOW", "the stand-in's minimap strata")
+  eq(icon:GetFrameStrata(), "MEDIUM", "the icon's strata")
+  local level = icon:GetFrameLevel()
+  -- A click on the minimap: the cluster and everything in it go to the top of LOW.
+  G.MinimapCluster.level = 60
+  if G.MinimapCluster.DielFrame then G.MinimapCluster.DielFrame.level = 63 end
+  if G.MinimapCluster.SetEditModeScale then G.MinimapCluster:SetEditModeScale(1) end
+  game.advance(2)
+  eq(icon:GetFrameStrata(), "MEDIUM", "the icon's strata after the minimap was raised")
+  eq(icon:GetFrameLevel(), level, "the icon's level after the minimap was raised")
+end)
+
 test("the tooltip says what the icon is doing and what a click does", function(game)
   game.login()
   game.advance(8)
@@ -62,6 +93,38 @@ test("a click saves: the interface reloads and the player is told", function(gam
   eq(#onFile[1].lines, #game.written[1].lines, "the first session's lines on file against the lines written")
   eq(game.written[2].lines[1].kind, "SESSION", "the second session's first line")
   eq(game.written[2].lines[1].fields[9], "1", "the second session's SESSION line says it is a reload")
+end)
+
+-- The game writes the file at every reload, the icon's or one typed, so a reload says one line:
+-- saved, under the emblem. Recording is said again only when it has stopped.
+test("a reload says one line, that the recording is saved, whichever way it was asked for", function(game)
+  game.saved = { WidsithAccount = { settings = {}, seenVersion = game.version } }
+  game.login()
+  game.advance(12)
+  for _, how in ipairs({ "click", "typed" }) do
+    game.clearChat()
+    if how == "click" then game.clickSave() game.advance(1) else game.reload() end
+    game.advance(12)
+    eq(#game.chat, 1, "lines said after a " .. how .. " reload")
+    eq(game.chat[1], "|TInterface\\AddOns\\Widsith\\media\\flame-chat:16:16|t |cff33ff99Widsith|r saved.", "the line after a " .. how .. " reload")
+    expect(game.addon.isRecording(), "not recording after a " .. how .. " reload")
+  end
+end)
+
+test("a reload on a stopped character says only that it is not recording", function(game)
+  game.saved = { WidsithAccount = { settings = {}, seenVersion = game.version } }
+  game.login()
+  game.advance(8)
+  game.slash("stop")
+  for _, how in ipairs({ "click", "typed" }) do
+    game.clearChat()
+    if how == "click" then game.clickSave() game.advance(1) else game.reload() end
+    game.advance(12)
+    eq(#game.chat, 1, "lines said after a " .. how .. " reload while stopped")
+    expect(game.said("is not recording on this character. Start recording from the icon or with /widsith start."),
+      "the stopped line wasn't said after a " .. how .. " reload")
+    expect(not game.said("saved."), "a stopped reload said saved")
+  end
 end)
 
 test("a click in combat refuses to reload and says so", function(game)
@@ -104,6 +167,30 @@ test("the reminder appears once the flame has burnt down, only somewhere calm", 
     bubble.scripts.OnClick(bubble)
     expect(game.reloadAsked, "clicking the reminder didn't ask for a reload")
   end
+end)
+
+-- The reminder's close button is the player's own action, so a fault in it is answered in chat
+-- and noted, never raised to the game as an error.
+test("a fault closing the reminder is answered in plain words, and the next close works", { errAllowed = true, problemAllowed = true }, function(game)
+  game.login()
+  game.advance(46 * 60)
+  game.world.resting = true
+  game.advance(6)
+  local bubble = game.reminder()
+  expect(bubble and bubble:IsShown(), "no reminder to close")
+  local close
+  for _, child in ipairs(bubble.children) do
+    if child.kind == "Button" then close = child end
+  end
+  expect(close and close.scripts.OnClick, "the reminder has no close button with a click")
+  bubble.Hide = function() error("boom") end
+  close.scripts.OnClick(close)
+  expect(game.said("that didn't work"), "the fault wasn't answered in chat")
+  local err = game.last("ERR")
+  expect(err and err.fields[1] == "reminder", "the fault wasn't noted as ERR reminder: " .. tostring(err and err.fields[1]))
+  bubble.Hide = nil
+  close.scripts.OnClick(close)
+  expect(not bubble:IsShown(), "the reminder didn't close once the fault was gone")
 end)
 
 test("reminders can be turned off from the menu, and the reminder goes with them", function(game)

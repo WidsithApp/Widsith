@@ -2,6 +2,18 @@
 
 Each version of Widsith, newest first, with the date it was handed out. The addon only ever records, so a change here is to what it records or to what you see in game.
 
+## 0.7.1 · 2026-11-21
+
+- After a reload, chat says one line, that the recording is saved. It used to say that Widsith was recording as well. When recording is stopped on the character, it says that instead.
+- On WoW Forever each session records the character's ruleset, Normal, PvP, Roleplay or Roleplay PvP, as the game's own rules state it. The game no longer gives addons the realm's name, which used to say it.
+- Opening a mailbox is no longer recorded as a /read emote, just as opening the map isn't. A /read you type is still recorded, whether the map or the mailbox is open or not.
+- When the game sends your quest log late after a login, as it can on the first login after a patch, the log is recorded the moment it arrives. It used to wait for the next snapshot, a few minutes later, and your next quest change then recorded every quest's objectives as though each had just been accepted.
+- A guild the game hasn't finished loading at a login is no longer recorded as a guild with no name.
+- The two played-time lines the game prints when Widsith asks for your played time, at a login or a reload, are no longer hidden. Hiding them meant swapping out a piece of the game's own chat code, which other addons can trip over; the lines are the game's, and now show as they do after /played.
+- Closing the save reminder with its X is guarded like every other click, so a fault there is answered in chat rather than as an error window.
+- The icon no longer ends up behind the minimap after you click the map. It sits a layer above the minimap now.
+- On WoW Forever the icon shows beside interface addons that fade the game's minimap cluster, such as EllesmereUI. It used to sit inside that cluster to match the day/night dial, and vanished with it.
+
 ## 0.7.0 · 2026-11-07
 
 - Your settings are shared by all your characters. The first character you log in on after installing this version lends its settings to the account; what other characters had set is not kept.
