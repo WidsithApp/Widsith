@@ -694,8 +694,9 @@ handlers.CHAT_MSG_MONSTER_PARTY   = npcSpeech("party")
 handlers.CHAT_MSG_RAID_BOSS_EMOTE = npcSpeech("boss")
 
 ---------------------------------------------------------------------------
--- RULES: hardcore, self-found, and the interface preset chosen at the character
--- screen (WoW Forever: 0 Classic, 1 Modern), fixed for the session.
+-- RULES: hardcore, self-found, the interface preset chosen at the character
+-- screen (WoW Forever: 0 Classic, 1 Modern), then the ruleset: the PvP rule, the
+-- Roleplay rule and the game mode record. Fixed for the session.
 ---------------------------------------------------------------------------
 
 local function answer(owner, name)
@@ -709,8 +710,9 @@ local function writeRules()
   local hardcore = answer(C_GameRules, "IsHardcoreActive")
   local selfFound = answer(C_PlayerInfo, "IsSelfFoundActive")
   local preset = answer(C_GameRules, "GetForeverExperiencePreset")
-  if hardcore == nil and selfFound == nil and preset == nil then return end
-  write("RULES", hardcore, selfFound, preset)
+  local pvp, rp, mode = WJ.gameRules()
+  if hardcore == nil and selfFound == nil and preset == nil and pvp == nil and rp == nil and mode == nil then return end
+  write("RULES", hardcore, selfFound, preset, pvp, rp, mode)
 end
 
 ---------------------------------------------------------------------------

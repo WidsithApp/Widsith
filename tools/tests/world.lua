@@ -1,6 +1,7 @@
 -- The world and the character's gear: the weather and the daylight (Events.lua), durability and
 -- broken gear (Events.lua), gear changes and the worn items' strings (Extras.lua, Core.lua's
--- snapshot), and the READ emote the game performs when the map opens (Extras.lua's hooks).
+-- snapshot), and the READ emote the game performs when the map or the mail window opens
+-- (Extras.lua's hooks).
 
 ---------------------------------------------------------------------------
 -- Weather and daylight
@@ -257,23 +258,42 @@ test("EQUIP carries the item string, and a SNAP lists the worn strings first and
 end)
 
 ---------------------------------------------------------------------------
--- The map's own READ emote
+-- The READ the interface performs
 ---------------------------------------------------------------------------
 
--- The game performs READ itself as the world map opens, with the map's frame already shown
--- when the hook sees it: that one is the map's and is left out. A READ with the map closed is
--- the player's own and is written.
+-- The world map and the mail window make the character read as they open: Blizzard's code
+-- performs READ with suppressMoveError, which no emote the player asks for passes. Those two are
+-- left out; a READ the player types is written, the map open or not, the mail window open or not.
+local function reads(game)
+  local n = 0
+  for _, l in ipairs(game.lines("EMOTE")) do
+    if l.fields[1] == "READ" then n = n + 1 end
+  end
+  return n
+end
+
 test("the READ the game performs as the map opens is left out, and the player's own is written", function(game)
   game.login()
   game.advance(8)
-  game.world.mapShown = true
-  game.G.C_ChatInfo.PerformEmote("READ")
-  game.world.mapShown = false
-  game.G.C_ChatInfo.PerformEmote("READ")
+  game.openMap()
+  eq(reads(game), 0, "READ lines after the map opened")
+  game.emote("READ")
+  eq(reads(game), 1, "READ lines after the player typed /read with the map open")
+  game.closeMap()
+  game.emote("READ")
   game.advance(1)
-  local reads = 0
-  for _, l in ipairs(game.lines("EMOTE")) do
-    if l.fields[1] == "READ" then reads = reads + 1 end
-  end
-  expect(reads == 1, "READ written " .. reads .. " times: the map's own should be left out, the player's kept")
+  eq(reads(game), 2, "READ lines after the player typed /read with the map closed")
+  eq(game.addon.counts.emotes, 2, "emotes counted")
+end)
+
+test("the READ the game performs as the mail window opens is left out, and the player's own is written", function(game)
+  game.login()
+  game.advance(8)
+  game.openMail()
+  eq(reads(game), 0, "READ lines after the mail window opened")
+  game.emote("READ")
+  game.closeMail()
+  game.emote("WAVE")
+  game.advance(1)
+  same(game.fieldsOf("EMOTE"), { "READ", "WAVE" }, "EMOTE lines")
 end)
