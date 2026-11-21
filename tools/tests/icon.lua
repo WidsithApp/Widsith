@@ -29,18 +29,35 @@ test("a login lights the icon and says the version is recording, under the emble
   end
 end)
 
--- With the day/night dial, the icon takes the dial's layer and its size on screen, but never its
--- parent: a child of the minimap cluster goes with the cluster when an interface addon fades it.
-test("the icon stays UIParent's child at the dial's layer and size", { client = "forever" }, function(game)
+-- With the day/night dial, the icon takes the dial's size on screen, but never its parent: a
+-- child of the minimap cluster goes with the cluster when an interface addon fades it.
+test("the icon stays UIParent's child at the dial's size", { client = "forever" }, function(game)
   game.onBuild = function(G) G.MinimapCluster.scale = 0.8 end
   game.login()
   game.advance(8)
   local icon, dial = game.icon(), game.G.MinimapCluster.DielFrame
   expect(dial ~= nil, "the stand-in has no dial on this client")
   expect(icon:GetParent() == game.G.UIParent, "the icon's parent isn't UIParent: " .. tostring(icon:GetParent() and icon:GetParent():GetName()))
-  eq(icon:GetFrameStrata(), dial:GetFrameStrata(), "the icon's strata against the dial's")
-  eq(icon:GetFrameLevel(), dial:GetFrameLevel(), "the icon's level against the dial's")
   eq(icon:GetEffectiveScale(), dial:GetEffectiveScale(), "the icon's size on screen against the dial's")
+end)
+
+-- The minimap cluster is raised within its strata whenever it is clicked, which lifts the map's
+-- frame level past any level copied from it earlier. The icon stands a strata above instead, so
+-- no raise of the cluster can put the map over it.
+test("the icon stands a strata above the minimap, whatever the minimap's level becomes", function(game)
+  game.login()
+  game.advance(8)
+  local G, icon = game.G, game.icon()
+  eq(G.MinimapCluster:GetFrameStrata(), "LOW", "the stand-in's minimap strata")
+  eq(icon:GetFrameStrata(), "MEDIUM", "the icon's strata")
+  local level = icon:GetFrameLevel()
+  -- A click on the minimap: the cluster and everything in it go to the top of LOW.
+  G.MinimapCluster.level = 60
+  if G.MinimapCluster.DielFrame then G.MinimapCluster.DielFrame.level = 63 end
+  if G.MinimapCluster.SetEditModeScale then G.MinimapCluster:SetEditModeScale(1) end
+  game.advance(2)
+  eq(icon:GetFrameStrata(), "MEDIUM", "the icon's strata after the minimap was raised")
+  eq(icon:GetFrameLevel(), level, "the icon's level after the minimap was raised")
 end)
 
 test("the tooltip says what the icon is doing and what a click does", function(game)

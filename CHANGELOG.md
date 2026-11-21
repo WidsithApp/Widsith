@@ -11,6 +11,7 @@ Each version of Widsith, newest first, with the date it was handed out. The addo
 - A guild the game hasn't finished loading at a login is no longer recorded as a guild with no name.
 - The two played-time lines the game prints when Widsith asks for your played time, at a login or a reload, are no longer hidden. Hiding them meant swapping out a piece of the game's own chat code, which other addons can trip over; the lines are the game's, and now show as they do after /played.
 - Closing the save reminder with its X is guarded like every other click, so a fault there is answered in chat rather than as an error window.
+- The icon no longer ends up behind the minimap after you click the map. It sits a layer above the minimap now.
 - On WoW Forever the icon shows beside interface addons that fade the game's minimap cluster, such as EllesmereUI. It used to sit inside that cluster to match the day/night dial, and vanished with it.
 
 ## 0.7.0 · 2026-11-07

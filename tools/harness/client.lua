@@ -810,6 +810,8 @@ local function newGame(profileName, dir, version)
     G.UIParent.width, G.UIParent.height, G.UIParent.center = 1366, 768, { 683, 384 }
     G.MinimapCluster = newWidget(game, "Frame", "MinimapCluster", G.UIParent)
     G.MinimapCluster.center = { 1250, 650 }
+    -- As the game's own minimap is declared: in the LOW strata, and raised within it on a click.
+    G.MinimapCluster.strata, G.MinimapCluster.level = "LOW", 1
     G.Minimap = newWidget(game, "Frame", "Minimap", G.MinimapCluster)
     G.Minimap.width, G.Minimap.height, G.Minimap.center = 140, 140, { 1250, 650 }
     if profile.diel then
@@ -818,6 +820,7 @@ local function newGame(profileName, dir, version)
       local dial = newWidget(game, "Frame", "MinimapClusterDielFrame", G.MinimapCluster)
       dial.width, dial.height, dial.center = 42, 42, { 1313, 722 }
       dial.points[1] = { "CENTER", G.MinimapCluster, "CENTER", 63, 72 }
+      dial.strata, dial.level = "LOW", 4
       G.MinimapCluster.DielFrame = dial
       G.MinimapCluster.SetEditModeScale = function(self, scale) self.scale = scale end
     end

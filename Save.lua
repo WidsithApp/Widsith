@@ -355,10 +355,12 @@ local function updateIcon()
   wasRecording = recording
 end
 
--- Where the day/night indicator exists, the icon takes its layer and its size on screen,
--- times the chosen size, so it follows the minimap through Edit Mode. It stays UIParent's
--- child: inside the minimap cluster it would go with the cluster when an interface addon
--- fades or hides it.
+-- Where the day/night indicator exists, the icon takes its size on screen, times the chosen
+-- size, so it follows the minimap through Edit Mode. It stays UIParent's child: inside the
+-- minimap cluster it would go with the cluster when an interface addon fades or hides it.
+-- It keeps a strata of its own, above the cluster's (createIcon), and never the indicator's
+-- frame level: the cluster is raised within its strata whenever it is clicked, and a level
+-- copied from it would then lie under the map.
 local function diel()
   return MinimapCluster and MinimapCluster.DielFrame
 end
@@ -366,11 +368,7 @@ end
 local function matchDiel()
   local d = diel()
   local scale = 1
-  if d then
-    icon:SetFrameStrata(d:GetFrameStrata())
-    icon:SetFrameLevel(d:GetFrameLevel())
-    scale = d:GetEffectiveScale() / UIParent:GetEffectiveScale()
-  end
+  if d then scale = d:GetEffectiveScale() / UIParent:GetEffectiveScale() end
   icon:SetScale(scale * size())
   layoutFlame()
 end
@@ -654,6 +652,7 @@ end
 
 local function createIcon()
   icon = CreateFrame("Button", "WidsithRecordingIcon", UIParent)
+  -- One strata above the minimap cluster's (LOW), so the map is never drawn over the icon.
   icon:SetFrameStrata("MEDIUM")
   icon:SetClampedToScreen(true)
   icon:SetMovable(true)

@@ -74,6 +74,7 @@ local NOTES = {
     { "The two played-time lines the game prints when Widsith asks for your played time, at a login or a reload, are no longer hidden", chat = true },
     { "A fault closing the save reminder is answered in chat, like every other click, rather than raised as an error" },
     { "On WoW Forever the icon shows beside interface addons that fade the game's minimap cluster, such as EllesmereUI" },
+    { "The icon no longer ends up behind the minimap after you click the map" },
     { "After a reload, chat says only that the recording is saved, or that recording is stopped when it is" },
     { "On WoW Forever the recording says which ruleset your character plays on, from the game's own rules" },
     { "Opening a mailbox is no longer recorded as a /read emote" },
