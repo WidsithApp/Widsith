@@ -31,7 +31,7 @@ cd "World of Warcraft\_retail_\Interface\AddOns"
 git clone https://github.com/WidsithApp/Widsith.git Widsith
 ```
 
-The same addon loads on Retail and on WoW Forever, which has its own `Interface\AddOns` folder inside its own game folder, `_forever_`. Start the game or type `/reload`, and chat says that Widsith is recording.
+The same addon loads on Retail and on WoW Forever, which has its own `Interface\AddOns` folder inside its own game folder, `_forever_`. Start the game, and chat says that Widsith is recording; after a `/reload` it says the recording is saved.
 
 Each version is also on this repository's Releases page as a zip, built from its tag by the workflow in `.github/workflows/release.yml`: the same file widsith.app and the addon sites hand out.
 

@@ -74,6 +74,11 @@ local NOTES = {
     { "The two played-time lines the game prints when Widsith asks for your played time, at a login or a reload, are no longer hidden", chat = true },
     { "A fault closing the save reminder is answered in chat, like every other click, rather than raised as an error" },
     { "On WoW Forever the icon shows beside interface addons that fade the game's minimap cluster, such as EllesmereUI" },
+    { "After a reload, chat says only that the recording is saved, or that recording is stopped when it is" },
+    { "On WoW Forever the recording says which ruleset your character plays on, from the game's own rules" },
+    { "Opening a mailbox is no longer recorded as a /read emote" },
+    { "A quest log the game sends late after a login is recorded the moment it arrives" },
+    { "A guild the game hasn't loaded yet at a login is no longer recorded as a guild with no name" },
   },
   ["0.7.0"] = {
     { "Screenshot highlights, and the include chat in screenshots options are now enabled by default", chat = true },

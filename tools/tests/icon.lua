@@ -78,6 +78,38 @@ test("a click saves: the interface reloads and the player is told", function(gam
   eq(game.written[2].lines[1].fields[9], "1", "the second session's SESSION line says it is a reload")
 end)
 
+-- The game writes the file at every reload, the icon's or one typed, so a reload says one line:
+-- saved, under the emblem. Recording is said again only when it has stopped.
+test("a reload says one line, that the recording is saved, whichever way it was asked for", function(game)
+  game.saved = { WidsithAccount = { settings = {}, seenVersion = game.version } }
+  game.login()
+  game.advance(12)
+  for _, how in ipairs({ "click", "typed" }) do
+    game.clearChat()
+    if how == "click" then game.clickSave() game.advance(1) else game.reload() end
+    game.advance(12)
+    eq(#game.chat, 1, "lines said after a " .. how .. " reload")
+    eq(game.chat[1], "|TInterface\\AddOns\\Widsith\\media\\flame-chat:16:16|t |cff33ff99Widsith|r saved.", "the line after a " .. how .. " reload")
+    expect(game.addon.isRecording(), "not recording after a " .. how .. " reload")
+  end
+end)
+
+test("a reload on a stopped character says only that it is not recording", function(game)
+  game.saved = { WidsithAccount = { settings = {}, seenVersion = game.version } }
+  game.login()
+  game.advance(8)
+  game.slash("stop")
+  for _, how in ipairs({ "click", "typed" }) do
+    game.clearChat()
+    if how == "click" then game.clickSave() game.advance(1) else game.reload() end
+    game.advance(12)
+    eq(#game.chat, 1, "lines said after a " .. how .. " reload while stopped")
+    expect(game.said("is not recording on this character. Start recording from the icon or with /widsith start."),
+      "the stopped line wasn't said after a " .. how .. " reload")
+    expect(not game.said("saved."), "a stopped reload said saved")
+  end
+end)
+
 test("a click in combat refuses to reload and says so", function(game)
   game.login()
   game.advance(8)

@@ -143,7 +143,7 @@ test("a new version is announced once per account as one message listing what ch
   -- Chat gets what a player may act on or what changes the way things work; the About page
   -- lists everything, the guarded close button included.
   expect(not said[2]:find("save reminder", 1, true), "a change a player can only see is in the message")
-  eq(#game.addon.whatsNew(), 3, "the About page's notes")
+  eq(#game.addon.whatsNew(), 8, "the About page's notes")
   -- The About page lists the notes under a heading with the version.
   local about = game.panelRow("About")
   local texts = {}
@@ -152,6 +152,7 @@ test("a new version is announced once per account as one message listing what ch
   expect(joined:find("What's new in " .. game.version, 1, true), "the About page has no What's new heading")
   expect(joined:find("The two played-time lines the game prints", 1, true), "the About page doesn't list the notes")
   expect(joined:find("A fault closing the save reminder", 1, true), "the About page leaves out a note chat doesn't carry")
+  expect(joined:find("Opening a mailbox is no longer recorded", 1, true), "the About page leaves out a note of what is recorded")
   game.clearChat()
   game.loginAs("Maela", game.profile.surname and "Dunwood" or nil)
   game.advance(4)

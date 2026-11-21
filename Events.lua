@@ -396,9 +396,36 @@ local function diffQuestLog(silent, opening)
 end
 WJ.diffQuestLog = diffQuestLog
 
+-- The quest part of the opening: each quest's name, the quests already ready to turn in, and
+-- the objectives seeded without a line.
+local function openQuestLog()
+  WJ.guard("questLabels", WJ.writeQuestLabels)()
+  WJ.guard("questLog", diffQuestLog)(true, true)
+end
+
+-- At a login the servers may not have sent the quest log yet, and it reads empty until they
+-- do; no event says which. A log that reads empty at the opening and holds quests later, with
+-- no quest accepted in between, has arrived: a snapshot is written then, and the quest part of
+-- the opening with it.
+local awaitingLog = false
+
+function WJ.writeOpeningQuests()
+  openQuestLog()
+  awaitingLog = #WJ.questIDs() == 0
+end
+
+local function checkLogArrived()
+  if not awaitingLog or not WJ.isRecording() then return end
+  if #WJ.questIDs() == 0 then return end
+  awaitingLog = false
+  WJ.guard("snapshot", WJ.snapshot)()
+  openQuestLog()
+end
+
 local diffPending = false
 local runDiff = WJ.guard("questDiff", function()
   diffPending = false
+  checkLogArrived()
   diffQuestLog(false)
 end)
 local function scheduleDiff()
@@ -412,9 +439,10 @@ handlers.UNIT_QUEST_LOG_CHANGED = function(unit)
   if unit == "player" then scheduleDiff() end
 end
 
--- Too frequent to trigger a diff; shown in debug mode only.
+-- Too frequent to trigger a diff; it is where a quest log that arrives late is first seen.
 handlers.QUEST_LOG_UPDATE = function()
   if WJ.debug then print("|cff8888ffWJ|r QUEST_LOG_UPDATE") end
+  checkLogArrived()
 end
 
 -- The quest's own level, and the level its difficulty colour is rated by
@@ -428,6 +456,9 @@ local function questLevels(questID)
 end
 
 handlers.QUEST_ACCEPTED = function(questID)
+  -- After an accept, a log that read empty at the opening is no longer waited for: the
+  -- accept's own lines say what entered it.
+  awaitingLog = false
   local title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(questID)
   write("QACCEPT", questID, giverGUID(), title, questLevels(questID))
   counts.quests = counts.quests + 1
@@ -1344,6 +1375,7 @@ function WJ.seedState()
   lastTotal, lastChange = plainNumber(GetMoney()), nil
   lastGroup = nil
   if IsInGroup() then writeGroupIfChanged() else lastGroup = "0none" end
+  awaitingLog = false
   C_Timer.After(2, WJ.guard("questSeed", function() diffQuestLog(true) end))
 end
 

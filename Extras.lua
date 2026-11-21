@@ -909,8 +909,9 @@ end
 
 ---------------------------------------------------------------------------
 -- Guild: GUILD name rankName realm rankIndex, all empty when the character
--- leaves. At login the client may not know the guild yet, so nothing is
--- written until it does; a character in no guild writes nothing.
+-- leaves. At login the client may not know the guild yet, and answers with no
+-- name (sometimes with rank 0), so nothing is written until it does; a
+-- character in no guild writes nothing.
 ---------------------------------------------------------------------------
 
 local lastGuild   -- field key of the last GUILD written; nil before the first read
@@ -920,6 +921,8 @@ local function writeGuild()
   if not GetGuildInfo then return end
   local name, rankName, rankIndex, realm = GetGuildInfo("player")
   local fields = { WJ.field(name), WJ.field(rankName), WJ.field(realm), WJ.field(rankIndex) }
+  -- No name is no guild, whatever else the answer holds.
+  if fields[1] == "" then fields = { "", "", "", "" } end
   local key = table.concat(fields, "\t")
   if key == lastGuild then return end
   if key == NO_GUILD then
@@ -1062,6 +1065,7 @@ if RECORD_SPEECH then
   handlers.CHAT_MSG_YELL = speech("yell")
 end
 
+-- Whether the world map is shown; a highlight of a place waits while it is (Screenshots.lua).
 function WJ.mapIsOpen()
   local map = WorldMapFrame
   if type(map) ~= "table" or type(map.IsShown) ~= "function" then return false end
@@ -1108,11 +1112,13 @@ function WJ.installHooks()
   -- EMOTE: the game performs typed and menu emotes with C_ChatInfo.PerformEmote
   -- (ChatFrameEditBox.lua, ChatFrameMenuButton.lua), and DoEmote is a deprecated wrapper
   -- around it (Deprecated_ChatInfo.lua), so DoEmote is hooked only on a client without it.
-  -- A refused emote is still written. The game performs READ itself whenever the world map
-  -- opens, so a READ with the map open is left out.
-  local function emote(token)
-    if type(token) ~= "string" or token == "" then return end
-    if token == "READ" and WJ.mapIsOpen() then return end
+  -- A refused emote is still written. The interface performs READ itself as the world map and
+  -- the mail window open, passing suppressMoveError (Blizzard_WorldMap.lua, MailFrame.lua); the
+  -- player's own emotes, typed, from the menu or the gamepad, never pass it. An emote performed
+  -- with it is the interface's and is left out.
+  local function emote(token, _, suppressMoveError)
+    if secret(token) or secret(suppressMoveError) then return end
+    if type(token) ~= "string" or token == "" or suppressMoveError == true then return end
     write("EMOTE", token)
     counts.emotes = counts.emotes + 1
   end

@@ -28,8 +28,13 @@ local ADDON_FILES = { "Core.lua", "Position.lua", "Events.lua", "Extras.lua", "M
 local PROFILES = {
   forever = {
     label = "forever",
-    version = "1.60.1", build = "70790", interface = 16001, project = 18, expansion = 0,
-    realm = "CAMWOW US1 Realm 3 PvE", realmN = "CAMWOWUS1Realm3PvE", region = 1,
+    version = "1.60.1", build = "71037", interface = 16001, project = 18, expansion = 0,
+    -- Since build 71037 both realm calls answer an empty string, from the file's load on.
+    realm = "", realmN = "", region = 1,
+    -- The rulesets are game rules, in the client's Enum.GameRule though not in the generated
+    -- documentation; IsGameRuleActive reads them, and the game mode record goes with each.
+    gameRules = { HardcoreRuleset = 10, PvPRuleset = 213, RPRuleset = 214 },
+    gameMode = 15,                 -- the Normal ruleset's record
     surname = "Thornby",           -- every character has one; UnitName gives it
     dayTime = true,                -- C_DateAndTime.IsDayTime and DIEL_CYCLE_CHANGED exist
     diel = true,                   -- the minimap's day/night dial and its ring atlas
@@ -42,6 +47,10 @@ local PROFILES = {
     label = "retail",
     version = "12.1.5", build = "70575", interface = 120105, project = 1, expansion = 11,
     realm = "Whitemane", realmN = "Whitemane", region = 1,
+    -- What Retail's Enum.GameRule holds and its game mode record have not been seen, so the
+    -- enum names neither ruleset rule and the record call answers nothing.
+    gameRules = {},
+    gameMode = nil,
     surname = nil,
     dayTime = false,
     diel = false,                  -- the classic minimap button ring
@@ -97,6 +106,10 @@ local function newWorld(profile)
   w.npcGUID = nil
   w.resting, w.instance, w.taxi, w.dead = false, false, false, false
   w.hardcore = false
+  w.rules = {}                 -- the game rules that are on, by their number
+  w.gameMode = profile.gameMode
+  w.guild = nil                -- GetGuildInfo's four answers, { name, rankName, rankIndex, realm }
+  w.inGuild = false            -- IsInGuild
   w.chatLockdown = false
   w.mapShown = false
   w.position = nil             -- mapID the recorder's currentPosition answers, when a test sets it
@@ -537,7 +550,8 @@ local function newGame(profileName, dir, version)
     G.Enum = { DamageMeterType = { DamageDone = 0, DamageTaken = 7, HealingDone = 2, EnemyDamageTaken = 10 },
       LootSlotType = { None = 0, Item = 1, Money = 2, Currency = 3 },
       PlayerInteractionType = { None = 0, TradePartner = 1, Item = 2, Gossip = 3, QuestGiver = 4, Merchant = 5, TaxiNode = 6,
-        Trainer = 7, Banker = 8, GuildBanker = 10, Registrar = 11, MailInfo = 17, Auctioneer = 21 } }
+        Trainer = 7, Banker = 8, GuildBanker = 10, Registrar = 11, MailInfo = 17, Auctioneer = 21 },
+      GameRule = copyTable(profile.gameRules) }
 
     -- The quest log
     local function questByID(id) for _, q in ipairs(world.questLog) do if q.questID == id then return q end end end
@@ -759,7 +773,15 @@ local function newGame(profileName, dir, version)
       GenerateImportString = function() return "BcQAAAAAAAAAAAAAAAAAAAAA" .. world.talent.group end,
     }
     G.C_GameRules = { IsHardcoreActive = function() return world.hardcore end,
-      GetForeverExperiencePreset = function() return 1 end }
+      GetForeverExperiencePreset = function() return 1 end,
+      IsGameRuleActive = function(rule) return world.rules[rule] == true end,
+      GetCurrentGameModeRecordID = function() return world.gameMode end }
+    -- The guild: nothing for a character in none, the four answers once the client knows it.
+    G.GetGuildInfo = function()
+      local g = world.guild
+      if g then return g.name, g.rankName, g.rankIndex, g.realm end
+    end
+    G.IsInGuild = function() return world.inGuild end
     G.C_PlayerInfo = { IsSelfFoundActive = function() return false end }
     -- The Skills tab: no lines until its answers are stubbed, so the recorder writes the
     -- professions alone.
@@ -774,9 +796,11 @@ local function newGame(profileName, dir, version)
     G.C_Weather = { GetCurrentWeather = function() return world.weather end }
     G.C_DateAndTime = { IsDayTime = function() return world.daytime end }
 
-    -- The world map, the emote the game performs when it opens, and chat's lockdown
+    -- The world map and the mail window, which perform READ as they open (game.openMap,
+    -- game.openMail), and chat's lockdown
     G.WorldMapFrame = { IsShown = function() return world.mapShown end }
-    G.C_ChatInfo = { PerformEmote = function() end, InChatMessagingLockdown = function() return world.chatLockdown end }
+    G.C_ChatInfo = { PerformEmote = function() end, CancelEmote = function() end,
+      InChatMessagingLockdown = function() return world.chatLockdown end }
     G.ChatFrameUtil = { DisplayTimePlayed = function() end }
 
     -- The screen: the world's frame, the interface's parent, the minimap and its cluster, the
@@ -1077,6 +1101,37 @@ local function newGame(profileName, dir, version)
   function game.closeWindow(name)
     fire("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", G.Enum.PlayerInteractionType[name])
     world.npcGUID = nil
+  end
+
+  -- The world map and the mail window opening and closing, as Blizzard's own code does it
+  -- (Blizzard_WorldMap.lua, MailFrame.lua): the frame shown, then the character made to read.
+  function game.openMap()
+    world.mapShown = true
+    G.C_ChatInfo.PerformEmote("READ", nil, true)
+  end
+  function game.closeMap()
+    world.mapShown = false
+    G.C_ChatInfo.CancelEmote()
+  end
+  function game.openMail()
+    G.C_ChatInfo.PerformEmote("READ", nil, true)
+  end
+  function game.closeMail() G.C_ChatInfo.CancelEmote() end
+  -- An emote the player types: the chat box performs the token with whatever followed it.
+  function game.emote(token, target) G.C_ChatInfo.PerformEmote(token, target) end
+
+  -- The character's ruleset on WoW Forever, as each was seen: the PvP and Roleplay rules on or
+  -- off, and the game mode record the game gave with them. Set before the login it applies to.
+  local RULESETS = {
+    normal = { pvp = false, rp = false, mode = 15 },
+    pvp = { pvp = true, rp = false, mode = 14 },
+    roleplay = { pvp = false, rp = true, mode = 16 },
+    roleplaypvp = { pvp = true, rp = true, mode = 18 },
+  }
+  function game.ruleset(name)
+    local r = assert(RULESETS[name], "no such ruleset: " .. tostring(name))
+    world.rules = { [213] = r.pvp, [214] = r.rp }
+    world.gameMode = r.mode
   end
 
   -- The lines written so far: all of them, or those of one kind, across every session; a

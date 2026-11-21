@@ -221,15 +221,38 @@ local function surnameOf(unit)
   return surname
 end
 
+-- Whether a game rule is on, by its name in Enum.GameRule; nil where the client lacks the rule
+-- or the call.
+local function ruleActive(name)
+  local rules = type(Enum) == "table" and Enum.GameRule or nil
+  local id = type(rules) == "table" and rules[name] or nil
+  if type(id) ~= "number" then return nil end
+  local active = WJ.gameCall("C_GameRules", "IsGameRuleActive", id)
+  if (issecretvalue and issecretvalue(active)) or type(active) ~= "boolean" then return nil end
+  return active
+end
+
+-- The character's ruleset as the game's rules state it: the PvP rule, the Roleplay rule and the
+-- game mode record. WoW Forever names a ruleset this way, and its realm calls answer empty.
+function WJ.gameRules()
+  local mode = WJ.gameCall("C_GameRules", "GetCurrentGameModeRecordID")
+  if (issecretvalue and issecretvalue(mode)) or type(mode) ~= "number" then mode = nil end
+  return ruleActive("PvPRuleset"), ruleActive("RPRuleset"), mode
+end
+
 local function describeCharacter()
   local _, _, classID = UnitClass("player")
   local _, _, raceID  = UnitRace("player")
+  local rulePvP, ruleRP, gameMode = WJ.gameRules()
   return {
     guid    = UnitGUID("player"),
     name    = (UnitName("player")),
     surname = surnameOf("player"),
     realm   = GetRealmName(),
     realmN  = GetNormalizedRealmName(),
+    rulePvP = rulePvP,
+    ruleRP  = ruleRP,
+    gameMode = gameMode,
     region  = GetCurrentRegion and GetCurrentRegion() or nil,
     classID = classID,
     raceID  = raceID,
@@ -299,8 +322,10 @@ function WJ.startSession(isLogin, isReload, isResume)
       -- said by the news
     elseif isLogin then
       WJ.announce(WJ.VERSION .. " is recording. Type /widsith help for commands.")
-    else
-      WJ.announce("is recording.")
+    elseif not WJ.savesNotLoaded then
+      -- The game writes the file at every reload, so a reload's one line says it is saved.
+      -- Left unsaid when the game failed to load the file back, which has its own warning.
+      WJ.announce("saved.")
     end
     if WJ.debug then print(PREFIX .. previousOnFile) end
   end
@@ -427,9 +452,8 @@ end
 function WJ.openingState()
   WJ.guard("snapshot", WJ.snapshot)(true)
   if WJ.writeOpeningWorld then WJ.guard("openingWorld", WJ.writeOpeningWorld)() end
-  if WJ.writeQuestLabels then WJ.guard("questLabels", WJ.writeQuestLabels)() end
-  -- The quest log's opening state (Events.lua), with quests already ready to turn in.
-  if WJ.diffQuestLog then WJ.guard("questLog", WJ.diffQuestLog)(true, true) end
+  -- The quest log's opening state (Events.lua): names, and quests already ready to turn in.
+  if WJ.writeOpeningQuests then WJ.guard("questLog", WJ.writeOpeningQuests)() end
   if WJ.writeOpeningExtras then WJ.guard("openingExtras", WJ.writeOpeningExtras)() end
   if WJ.writeOpeningMoments then WJ.guard("openingMoments", WJ.writeOpeningMoments)() end
 end
@@ -590,6 +614,7 @@ local USED_APIS = {
   "C_DamageMeter.GetCombatSessionSourceFromID", "C_DeathRecap.GetRecapEvents", "C_DeathRecap.GetRecapMaxHealth",
   "C_UnitAuras.GetAuraDataByIndex", "C_Secrets.ShouldAurasBeSecret", "GetStatisticsCategoryList", "GetCategoryNumAchievements", "GetStatistic",
   "C_GameRules.IsHardcoreActive", "C_PlayerInfo.IsSelfFoundActive", "C_GameRules.GetForeverExperiencePreset",
+  "C_GameRules.IsGameRuleActive", "C_GameRules.GetCurrentGameModeRecordID",
   "C_EquipmentSet.GetEquipmentSetIDs", "C_EquipmentSet.GetEquipmentSetInfo", "C_EquipmentSet.GetItemIDs",
   "C_EquipmentSet.GetIgnoredSlots", "C_EquipmentSet.GetEquipmentSetAssignedSpec",
   "C_SpecializationInfo.GetActiveSpecGroup", "C_SpecializationInfo.GetCombatConfigIDForSpecGroup",
